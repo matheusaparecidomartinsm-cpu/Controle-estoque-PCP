@@ -5,8 +5,8 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 ## O que o site faz
 
 - Mostra cada produto em uma linha, como na planilha de monitoramento: descrição, média mensal, quantidade por caixa, estoque, empenhado, disponível, dias, ruptura, OS, última movimentação, previsão e observação.
-- Calcula o disponível (estoque − empenhado), os dias de estoque (disponível ÷ média mensal × 30) e a data de ruptura a partir da data da importação.
-- **Importar planilha de estoque**: lê um arquivo .xlsx, .xls ou .csv, mostra uma prévia e substitui a lista da aba aberta. As colunas são reconhecidas pelo nome (Cód Novo, Descrição produto, Média Mensal, Quantidade por caixa, Estoque, Empenhado, Dias, OS, Última Movimentação, Previsão, Observação).
+- Calcula o disponível (estoque − empenhado), os dias de estoque (disponível ÷ média mensal × 30), os dias contando a entrega pendente e a data de ruptura a partir da data da importação.
+- **Importar planilha de estoque**: lê um arquivo .xlsx, .xls ou .csv e atualiza, pelo código, os produtos que já estão no site (JIT e genéricos). Produtos da planilha que não estão no site ficam de fora, a não ser que se marque a opção de adicioná-los. O formato do dia a dia é a exportação do sistema (aba "Export"): Produto ("código - descrição"), Estoque, Venda Empenhada, Média Mensal, Entrega Pendente e Dias Estoque Atual ("Estoque Incalculavel" vira "Sem média"). A planilha de monitoramento antiga (Cód Novo, Descrição produto, Quantidade por caixa, OS, Última Movimentação, Previsão, Observação) também é aceita. Campos que a planilha não traz, como OS e previsão, ficam como estavam.
 - **Importar planilha de OS**: liga cada OS ao produto pelo código e atualiza OS, última movimentação e previsão.
 - **Gerar relatório de 45 dias**: monta o PDF A4 "Itens com até 45 dias de estoque", com os itens que têm OS aberta, tirando os códigos do relatório Prioridades O.S e o Bar do Alemão SP.
 - Registra entrada e saída de caixas no painel de cada produto.

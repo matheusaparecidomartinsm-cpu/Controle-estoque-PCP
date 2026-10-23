@@ -69,7 +69,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,label:focus-with
 .search{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);width:340px;max-width:100%}
 .search input{border:0;outline:0;flex:1;min-width:0;background:transparent;color:var(--paper);font-family:var(--body);font-size:15px}
 .sheet{max-height:78vh;overflow:auto;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
-table{width:100%;min-width:1600px;border-collapse:separate;border-spacing:0}
+table{width:100%;min-width:1840px;border-collapse:separate;border-spacing:0}
 th{position:sticky;top:0;z-index:1;background:var(--surface-2);text-align:left;padding:13px 14px;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);white-space:nowrap}
 th.n,td.n{text-align:right}
 th:first-child{min-width:460px;padding-left:20px}
@@ -193,7 +193,9 @@ dd{margin:0;text-align:right;font-weight:600}
           <th class="n">Estoque</th>
           <th class="n">Empenhado</th>
           <th class="n">Disponível</th>
+          <th class="n">Entrega pendente</th>
           <th class="n">Dias</th>
+          <th class="n">Dias c/ entrega</th>
           <th>Ruptura</th>
           <th>OS</th>
           <th>Última movimentação</th>
@@ -235,8 +237,9 @@ dd{margin:0;text-align:right;font-weight:600}
   const dataLonga = (iso) => { const d = new Date(iso); return dd(d) + '/' + d.getFullYear() + ' às ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 
   function computa(it, i, baseIso) {
-    const [cod, nome, cli, media, cx, estoque, emp, os, etapa, prev, obs, sem] = it;
+    const [cod, nome, cli, media, cx, estoque, emp, os, etapa, prev, obs, sem, entrega] = it;
     const disp = estoque - emp;
+    const temEnt = typeof entrega === 'number';
     const porDia = media / 30;
     const semGiro = !!sem || !(porDia > 0);
     const cob = semGiro ? 1e9 : disp / porDia;
@@ -250,7 +253,9 @@ dd{margin:0;text-align:right;font-weight:600}
       ruptDias = disp <= 0 ? Math.min(0, Math.round((d - hoje) / 864e5)) : Math.round((d - hoje) / 864e5);
       rupt = ruptDias <= 0 ? 'Já em ruptura' : dd(d) + ', em ' + ruptDias + (ruptDias === 1 ? ' dia' : ' dias');
     }
-    return { i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob) };
+    const cobEnt = semGiro ? null : (disp + (temEnt ? entrega : 0)) / porDia;
+    return { i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob),
+      entregaTxt: temEnt ? fmt(entrega) : '', diasEnt: cobEnt === null ? '' : fmt(cobEnt), cobEnt };
   }
 
   function lista(tab) {
@@ -284,10 +289,12 @@ dd{margin:0;text-align:right;font-weight:600}
         + '<td style="' + k(0) + '"><span class="v item"><span class="dot" style="background:' + m.cor + '" title="' + m.label + '"></span><button class="desc" type="button" data-i="' + r.i + '"><span class="cod">' + esc(r.cod) + '</span><span class="nm">' + esc(r.nome) + '</span><span class="cli">' + esc(r.cli) + '</span></button></span></td>'
         + cell(1, 'n', fmt(r.media)) + cell(2, 'n', fmt(r.cx)) + cell(3, 'n', fmt(r.estoque)) + cell(4, 'n', fmt(r.emp))
         + cell(5, 'n', '<span style="font-weight:600;color:' + (r.disp < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + fmt(r.disp) + '</span>')
-        + cell(6, 'n', '<span class="pill" style="color:' + (r.semGiro ? 'var(--kraft)' : m.cor) + ';background:' + m.bg + '">' + esc(r.dias) + '</span>')
-        + cell(7, '', '<span style="font-weight:' + (r.ruptDias !== null && r.ruptDias <= 0 ? 700 : 500) + ';color:' + (r.semGiro ? 'var(--dim)' : r.ruptDias <= 0 ? 'var(--falta)' : r.st === 'ok' ? 'var(--paper)' : m.cor) + '">' + esc(r.rupt) + '</span>')
-        + cell(8, '', txt(r.os)) + cell(9, '', txt(r.etapa)) + cell(10, '', txt(r.prev))
-        + cell(11, 'obs', esc(r.obs))
+        + cell(6, 'n', r.entregaTxt && r.entregaTxt !== '0' ? '<span style="color:var(--ok);font-weight:600">' + esc(r.entregaTxt) + '</span>' : '<span class="muted">—</span>')
+        + cell(7, 'n', '<span class="pill" style="color:' + (r.semGiro ? 'var(--kraft)' : m.cor) + ';background:' + m.bg + '">' + esc(r.dias) + '</span>')
+        + cell(8, 'n', r.diasEnt ? '<span style="font-weight:600;color:' + (r.cobEnt < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + esc(r.diasEnt) + '</span>' : '<span class="muted">—</span>')
+        + cell(9, '', '<span style="font-weight:' + (r.ruptDias !== null && r.ruptDias <= 0 ? 700 : 500) + ';color:' + (r.semGiro ? 'var(--dim)' : r.ruptDias <= 0 ? 'var(--falta)' : r.st === 'ok' ? 'var(--paper)' : m.cor) + '">' + esc(r.rupt) + '</span>')
+        + cell(10, '', txt(r.os)) + cell(11, '', txt(r.etapa)) + cell(12, '', txt(r.prev))
+        + cell(13, 'obs', esc(r.obs))
         + '</tr>';
     }).join('');
     const empty = $('empty');
@@ -325,7 +332,7 @@ dd{margin:0;text-align:right;font-weight:600}
     const r = computa(doc.itens[i], i, doc.atualizadoEm);
     const m = ST[r.st];
     let tipo = 'entrada';
-    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']];
+    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']];
     layer.innerHTML = '<div class="overlay side" data-close><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dt"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:6px"><span class="meta">' + esc(r.cli) + ', código ' + esc(r.cod) + '</span><h2 id="dt">' + esc(r.nome) + '</h2></div><button class="close" type="button" data-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>'
       + '<div class="big" style="border-left-color:' + m.cor + '"><b style="color:' + m.cor + '">' + esc(r.dias) + '</b><span>' + (r.semGiro ? 'sem consumo no período' : 'dias de estoque, ' + m.label.toLowerCase()) + '</span></div>'
       + '<dl>' + linhas.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + esc(b) + '</dd></div>').join('') + '</dl>'
@@ -354,8 +361,9 @@ dd{margin:0;text-align:right;font-weight:600}
     media: ['mediamensal', 'media', 'mediames'],
     cx: ['quantidadeporcaixa', 'qtdporcaixa', 'qtdcaixa', 'quantidadecaixa', 'qtdecaixa'],
     estoque: ['estoque', 'estoqueatual'],
-    emp: ['empenhado', 'empenho'],
-    dias: ['dias'],
+    emp: ['empenhado', 'vendaempenhada', 'empenho'],
+    entrega: ['entregapendente', 'entregaspendentes'],
+    dias: ['diasestoqueatual', 'dias'],
     os: ['os', 'numeroos', 'ordemdeservico', 'nos', 'nos'],
     etapa: ['ultimamovimentacao', 'movimentacao', 'etapa'],
     prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo'],
@@ -368,7 +376,7 @@ dd{margin:0;text-align:right;font-weight:600}
     etapa: ['ultimamovimentacao', 'movimentacao', 'etapa', 'setor', 'status', 'situacao', 'fase', 'posicao'],
     prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo', 'entrega', 'dataentrega', 'prazoentrega', 'datadeentrega']
   };
-  const NOMES = { cod: 'Código', nome: 'Descrição produto', media: 'Média mensal', cx: 'Qtd. por caixa', estoque: 'Estoque', emp: 'Empenhado', dias: 'Dias', os: 'OS', etapa: 'Última movimentação', prev: 'Previsão', obs: 'Observação' };
+  const NOMES = { cod: 'Código', nome: 'Descrição produto', media: 'Média mensal', cx: 'Qtd. por caixa', estoque: 'Estoque', emp: 'Empenhado', entrega: 'Entrega pendente', dias: 'Dias', os: 'OS', etapa: 'Última movimentação', prev: 'Previsão', obs: 'Observação' };
 
   function acharColunas(header, map) {
     const h = header.map(norm); const res = {}; const usados = new Set();
@@ -425,14 +433,18 @@ dd{margin:0;text-align:right;font-weight:600}
     for (let i = t.hi + 1; i < t.rows.length; i++) {
       const r = t.rows[i]; const g = (c) => col[c] === undefined ? '' : r[col[c]];
       const bruto = texto(g('nome'));
-      if (!bruto || norm(bruto).startsWith('descricao')) continue;
+      if (!bruto || norm(bruto).startsWith('descricao') || norm(bruto).startsWith('produto')) continue;
       const [cod, nome] = codigoDe(g('cod'), bruto);
-      if (!cod) semCod++;
+      if (!cod) {
+        if (norm(bruto).startsWith('filtros') || (texto(g('estoque')) === '' && texto(g('media')) === '')) continue;
+        semCod++;
+      }
       const diasTxt = norm(g('dias'));
-      const sem = diasTxt.startsWith('semgiro') ? 'Sem giro' : diasTxt.startsWith('semmedia') ? 'Sem média' : '';
+      const sem = diasTxt.startsWith('semgiro') ? 'Sem giro' : (diasTxt.startsWith('semmedia') || diasTxt.includes('incalcul')) ? 'Sem média' : '';
       const os = texto(g('os')).replace(/\.0+$/, '').replace(/\.$/, '');
       const et = texto(g('etapa'));
-      itens.push([cod, nome, cliente(nome), num(g('media')), num(g('cx')), num(g('estoque')), num(g('emp')), os, et ? et[0].toUpperCase() + et.slice(1).toLowerCase() : '', texto(g('prev')), texto(g('obs')), sem]);
+      const ent = col.entrega === undefined ? null : num(g('entrega'));
+      itens.push([cod, nome, cliente(nome), num(g('media')), num(g('cx')), num(g('estoque')), num(g('emp')), os, et ? et[0].toUpperCase() + et.slice(1).toLowerCase() : '', texto(g('prev')), texto(g('obs')), sem, ent]);
     }
     if (!itens.length) throw new Error('A planilha não tem nenhuma linha de produto abaixo do cabeçalho.');
     return { itens, col, aba: t.aba, semCod, semCli: itens.filter((x) => !x[2]).length };
@@ -458,7 +470,35 @@ dd{margin:0;text-align:right;font-weight:600}
     return { mapa, col, aba: t.aba };
   }
 
-  function chips(col, map) { return Object.keys(map).map((c) => '<span class="col ' + (col[c] !== undefined ? 'ok' : 'miss') + '">' + (NOMES[c] || c) + (col[c] !== undefined ? '' : ' (não achei)') + '</span>').join(''); }
+  // Atualiza os produtos que já estão no site, pelo código. Campos que a planilha não traz ficam como estão.
+  function mesclarEstoque(res) {
+    const doArq = new Map(); res.itens.forEach((x) => { if (x[0] && !doArq.has(x[0])) doArq.set(x[0], x); });
+    const c = res.col; const out = {}; const usados = new Set(); let atual = 0, faltaram = 0;
+    for (const t of ['jit', 'gen']) {
+      const doc = state.docs[t]; if (!doc || !doc.itens.length) continue;
+      let n = 0;
+      const itens = doc.itens.map((x) => {
+        const f = doArq.get(x[0]);
+        if (!f) { faltaram++; return x; }
+        usados.add(x[0]); n++;
+        const y = x.slice();
+        y[3] = f[3]; y[5] = f[5]; y[6] = f[6]; y[11] = f[11];
+        if (c.cx !== undefined) y[4] = f[4];
+        if (c.os !== undefined) y[7] = f[7];
+        if (c.etapa !== undefined) y[8] = f[8];
+        if (c.prev !== undefined) y[9] = f[9];
+        if (c.obs !== undefined) y[10] = f[10];
+        if (c.entrega !== undefined) y[12] = f[12];
+        return y;
+      });
+      out[t] = { itens, n }; atual += n;
+    }
+    const novos = res.itens.filter((x) => x[0] && !usados.has(x[0]));
+    return { out, atual, faltaram, novos };
+  }
+
+  function chips(col, map, obrig) {
+    if (obrig) return Object.keys(map).map((c) => col[c] !== undefined ? '<span class="col ok">' + (NOMES[c] || c) + '</span>' : obrig.includes(c) ? '<span class="col miss">' + (NOMES[c] || c) + ' (não achei)</span>' : '<span class="col">' + (NOMES[c] || c) + ': mantém o do site</span>').join(''); return Object.keys(map).map((c) => '<span class="col ' + (col[c] !== undefined ? 'ok' : 'miss') + '">' + (NOMES[c] || c) + (col[c] !== undefined ? '' : ' (não achei)') + '</span>').join(''); }
 
   function dialogo(html) {
     layer.innerHTML = '<div class="overlay center" data-close><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">' + html + '</div></div>';
@@ -476,22 +516,42 @@ dd{margin:0;text-align:right;font-weight:600}
       if (typeof XLSX === 'undefined') throw new Error('O leitor de planilhas não carregou. Recarregue a página e tente de novo.');
       if (modo === 'estoque') {
         const res = await importarEstoque(file);
-        const amostra = res.itens.slice(0, 5);
-        dialogo('<h2 id="dlg-t">Importar estoque dos ' + nomeAba + '</h2>'
-          + '<p class="meta">' + esc(file.name) + ', aba “' + esc(res.aba) + '”: <b style="color:var(--paper)">' + res.itens.length + ' produtos</b> encontrados. Eles vão substituir a lista atual dos ' + nomeAba + ' (' + (state.docs[aba]?.itens?.length || 0) + ' produtos).</p>'
-          + '<div class="cols">' + chips(res.col, MAP_EST) + '</div>'
-          + (res.semCod ? '<p class="warn">' + res.semCod + ' linhas vieram sem código. Elas entram, mas a planilha de OS não consegue ligar OS a elas.</p>' : '')
-          + (aba === 'jit' && res.semCli ? '<p class="warn">' + res.semCli + ' produtos não tiveram o cliente reconhecido pelo nome. Eles aparecem como “Genérico” na coluna de cliente.</p>' : '')
-          + '<div class="prev"><table><thead><tr><th>Descrição produto</th><th class="n">Média</th><th class="n">Cx</th><th class="n">Estoque</th><th class="n">Empenhado</th><th>OS</th><th>Movimentação</th><th>Previsão</th></tr></thead><tbody>'
-          + amostra.map((x) => '<tr><td style="border-left:0;white-space:normal">' + esc(x[0]) + ' - ' + esc(x[1]) + '</td><td class="n">' + fmt(x[3]) + '</td><td class="n">' + fmt(x[4]) + '</td><td class="n">' + fmt(x[5]) + '</td><td class="n">' + fmt(x[6]) + '</td><td>' + esc(x[7]) + '</td><td>' + esc(x[8]) + '</td><td>' + esc(x[9]) + '</td></tr>').join('')
-          + '</tbody></table></div><p class="meta">Mostrando as 5 primeiras linhas.</p>'
-          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">Atualizar ' + res.itens.length + ' produtos</button></div>');
+        const mx = mesclarEstoque(res);
+        const vazio = !mx.atual && !Object.keys(mx.out).length;
+        const ent = res.col.entrega !== undefined;
+        const nAba = (t) => t === 'jit' ? 'produtos JIT' : 'genéricos';
+        const partes = Object.entries(mx.out).map(([t, o]) => o.n + ' nos ' + nAba(t));
+        const antes = new Map(); Object.values(state.docs).forEach((d) => d && d.itens.forEach((x) => { if (!antes.has(x[0])) antes.set(x[0], x); }));
+        const amostra = vazio ? res.itens.slice(0, 5) : res.itens.filter((x) => antes.has(x[0])).slice(0, 5);
+        dialogo('<h2 id="dlg-t">Importar planilha de estoque</h2>'
+          + '<p class="meta">' + esc(file.name) + ', aba “' + esc(res.aba) + '”: <b style="color:var(--paper)">' + res.itens.length + ' produtos</b> na planilha.</p>'
+          + (vazio
+            ? '<p class="warn">O site ainda não tem produtos. Os ' + res.itens.length + ' produtos da planilha vão entrar na aba ' + nomeAba + '.</p>'
+            : '<p style="margin:0;font-size:16px;line-height:1.45">Vai atualizar <b>' + mx.atual + ' produtos</b> que já estão no site (' + partes.join(', ') + '), pelo código.</p>'
+              + (mx.faltaram ? '<p class="warn">' + mx.faltaram + ' produtos do site não vieram nesta planilha e ficam com os números anteriores.</p>' : '')
+              + (mx.novos.length ? '<p class="meta">' + mx.novos.length + ' produtos da planilha não estão no site e ficam de fora.</p><label class="check" for="add-novos"><input type="checkbox" id="add-novos"><span>Adicionar esses ' + mx.novos.length + ' produtos na aba ' + nomeAba + '</span></label>' : ''))
+          + '<div class="cols">' + chips(res.col, MAP_EST, ['nome', 'media', 'estoque', 'emp']) + '</div>'
+          + (res.semCod ? '<p class="warn">' + res.semCod + ' linhas vieram sem código e não dá para ligá-las a nenhum produto.</p>' : '')
+          + '<div class="prev"><table><thead><tr><th>Descrição produto</th><th class="n">Estoque</th><th class="n">Empenhado</th><th class="n">Média</th>' + (ent ? '<th class="n">Entrega pendente</th>' : '') + '</tr></thead><tbody>'
+          + amostra.map((x) => { const v = antes.get(x[0]); return '<tr><td style="white-space:normal">' + esc(x[0]) + ' - ' + esc(x[1]) + '</td><td class="n">' + (v && v[5] !== x[5] ? '<span class="muted">' + fmt(v[5]) + ' → </span>' : '') + fmt(x[5]) + '</td><td class="n">' + fmt(x[6]) + '</td><td class="n">' + fmt(x[3]) + '</td>' + (ent ? '<td class="n">' + fmt(x[12] || 0) + '</td>' : '') + '</tr>'; }).join('')
+          + '</tbody></table></div><p class="meta">Mostrando 5 produtos como exemplo.</p>'
+          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">' + (vazio ? 'Carregar ' + res.itens.length + ' produtos' : 'Atualizar ' + mx.atual + ' produtos') + '</button></div>');
         $('ok').addEventListener('click', async () => {
+          const addNovos = !!($('add-novos') && $('add-novos').checked);
           $('ok').disabled = true; $('ok').textContent = 'Salvando…';
+          const agora = new Date().toISOString();
           try {
-            await state.db.doc('estoque/' + aba).set({ itens: res.itens, atualizadoEm: new Date().toISOString(), arquivo: file.name });
-            fechar(); toast('Estoque dos ' + nomeAba + ' atualizado: ' + res.itens.length + ' produtos.');
-          } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast(err && err.code === 'invalid_argument' ? 'A planilha é grande demais para salvar de uma vez. Me avise no chat que eu divido o armazenamento.' : 'Não deu para salvar. Confira a conexão e tente de novo.', true); }
+            if (vazio) {
+              await state.db.doc('estoque/' + aba).set({ itens: res.itens, atualizadoEm: agora, arquivo: file.name });
+              fechar(); toast('Estoque carregado: ' + res.itens.length + ' produtos.'); return;
+            }
+            if (addNovos) { const alvo = mx.out[aba] || { itens: (state.docs[aba]?.itens || []).slice(), n: 0 }; alvo.itens = alvo.itens.concat(mx.novos); alvo.n += mx.novos.length; mx.out[aba] = alvo; }
+            for (const [t, o] of Object.entries(mx.out)) {
+              if (!o.n) continue;
+              await state.db.doc('estoque/' + t).set({ itens: o.itens, atualizadoEm: agora, arquivo: file.name });
+            }
+            fechar(); toast('Estoque atualizado em ' + mx.atual + ' produtos' + (addNovos && mx.novos.length ? ' e ' + mx.novos.length + ' novos adicionados' : '') + '.');
+          } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast('Não deu para salvar. Confira a conexão e tente de novo.', true); }
         });
       } else {
         const res = await importarOS(file);
