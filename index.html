@@ -646,6 +646,11 @@ dd{margin:0;text-align:right;font-weight:600}
   // ---------- relatório "Itens até 45 dias" ----------
   const REL_PADRAO = { prioridades: '', excluirClientes: ['Bar do Alemão SP'] };
   function relConfig() { return Object.assign({}, REL_PADRAO, state.relCfg || {}); }
+  // A busca da tela vale para os relatórios: com algo digitado, só entram os itens que casam com ela.
+  const buscaTxt = () => String(state.q || '').trim();
+  const casaBusca = (r) => { const q = norm(state.q); return !q || norm(r.nome).includes(q) || norm(r.cod).includes(q) || norm(r.cli).includes(q); };
+  const arqBusca = () => { const b = buscaTxt(); return b ? ' - ' + b.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 40).trim() : ''; };
+  const avisoBusca = () => buscaTxt() ? '<p class="warn">Só entram os itens da busca “' + esc(buscaTxt()) + '”. Para tirar de todos os itens, limpe a caixa de busca.</p>' : '';
   function relItens(cfg) {
     const prio = new Set(String(cfg.prioridades || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean));
     const fora = new Set(cfg.excluirClientes || []);
@@ -659,12 +664,13 @@ dd{margin:0;text-align:right;font-weight:600}
         const dias = Math.round(r.cob);
         if (dias > 45) return;
         if (fora.has(r.cli)) return;
+        if (!casaBusca(r)) return;
         if (prio.has(String(r.cod))) { tirPrio++; return; }
         out.push(Object.assign({}, r, { diasN: dias }));
       });
     }
     out.sort((a, b) => a.cob - b.cob);
-    return { itens: out, base, tirPrio, prioQtd: prio.size };
+    return { itens: out, base, tirPrio, prioQtd: prio.size, filtro: buscaTxt() };
   }
   function dataBR(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
 
@@ -681,7 +687,7 @@ dd{margin:0;text-align:right;font-weight:600}
     pdf.setFontSize(19); pdf.setTextColor(...TINTA);
     pdf.text('Itens com até 45 dias de estoque', M, 24);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...CINZA);
-    const sub = res.prioQtd ? 'Sem os itens que já estão no relatório Prioridades O.S' : 'Itens com O.S aberta e até 45 dias de estoque';
+    const sub = (res.filtro ? 'Busca: "' + res.filtro + '". ' : '') + (res.prioQtd ? 'Sem os itens que já estão no relatório Prioridades O.S' : 'Itens com O.S aberta e até 45 dias de estoque');
     pdf.text(sub, M, 29.5);
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...TINTA);
     pdf.text('Posição de ' + dataBR(pos), W - M, 23, { align: 'right' });
@@ -730,6 +736,7 @@ dd{margin:0;text-align:right;font-weight:600}
     const prev = relItens(cfg);
     const n = { rup: prev.itens.filter((r) => r.diasN <= 0).length, cri: prev.itens.filter((r) => r.diasN >= 1 && r.diasN <= 29).length, ate: prev.itens.filter((r) => r.diasN >= 30).length };
     dialogo('<h2 id="dlg-t">Relatório: itens com até 45 dias</h2>'
+      + avisoBusca()
       + '<p class="meta">Itens com O.S aberta e até 45 dias de estoque, posição de ' + (prev.base ? dataBR(new Date(prev.base)) : 'hoje') + '. Agora: <b style="color:var(--paper)" id="rel-n">' + prev.itens.length + ' itens</b> (<span id="rel-det">' + n.rup + ' em ruptura, ' + n.cri + ' críticos, ' + n.ate + ' em atenção</span>).</p>'
       + '<label class="field" for="rel-prio">Códigos que já estão no relatório Prioridades O.S (ficam de fora)<textarea id="rel-prio" rows="3" placeholder="Ex.: 8914, 7771, 5709" style="padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px;resize:vertical">' + esc(cfg.prioridades) + '</textarea></label>'
       + '<label class="check" for="rel-alemao"><input type="checkbox" id="rel-alemao"' + ((cfg.excluirClientes || []).includes('Bar do Alemão SP') ? ' checked' : '') + '><span>Tirar os itens do Bar do Alemão SP</span></label>'
@@ -746,7 +753,7 @@ dd{margin:0;text-align:right;font-weight:600}
         if (state.canEdit && state.db) { state.db.doc('estoque/config').set({ prioridades: c.prioridades, excluirClientes: c.excluirClientes }).catch(() => {}); }
         const blob = gerarPDF(r, c);
         const d = new Date(r.base || Date.now());
-        const nomeArq = 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + '.pdf';
+        const nomeArq = 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + arqBusca() + '.pdf';
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nomeArq;
         document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
         fechar(); toast('Relatório baixado com ' + r.itens.length + ' itens.');
@@ -772,6 +779,7 @@ dd{margin:0;text-align:right;font-weight:600}
     const linhas = [];
     B.forEach((b, cod) => {
       const a = A.get(cod); if (!a) return;
+      if (!casaBusca(b)) return;
       if (a.semGiro && b.semGiro) return;
       const da = diasCap(a), db = diasCap(b);
       linhas.push({ cod, nome: b.nome, cli: b.cli, os: b.os, a, b, estA: a.estoque, estB: b.estoque, dispA: a.disp, dispB: b.disp,
@@ -838,7 +846,7 @@ dd{margin:0;text-align:right;font-weight:600}
     pdf.setFontSize(19); pdf.setTextColor(...TINTA);
     pdf.text('Relatório semanal de estoque', M, 24);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...CINZA);
-    pdf.text('O que mudou nos ' + nomeAba + ' entre ' + diaBR(fotoA) + ' e ' + diaBR(fotoB), M, 29.5);
+    pdf.text('O que mudou nos ' + nomeAba + ' entre ' + diaBR(fotoA) + ' e ' + diaBR(fotoB) + (buscaTxt() ? '. Busca: "' + buscaTxt() + '"' : ''), M, 29.5);
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...TINTA);
     pdf.text(diaBR(fotoA) + ' a ' + diaBR(fotoB), W - M, 23, { align: 'right' });
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(...CINZA);
@@ -914,7 +922,7 @@ dd{margin:0;text-align:right;font-weight:600}
     const A = diaBR(fotoA), B = diaBR(fotoB);
     const add = (nome, linhas) => { const ws = XLSX.utils.aoa_to_sheet(linhas); ws['!cols'] = linhas[0].map((_, i) => ({ wch: i === 1 ? 58 : 14 })); XLSX.utils.book_append_sheet(wb, ws, nome); };
     const dv = (v) => v === null ? 'Sem giro' : v;
-    add('Resumo', [['Relatório semanal de estoque', ''], ['Produtos', nomeAba], ['Período', A + ' a ' + B], [], ['Indicador', A, B],
+    add('Resumo', [['Relatório semanal de estoque', ''], ['Produtos', nomeAba], ['Período', A + ' a ' + B], ['Busca', buscaTxt() || 'Todos os itens'], [], ['Indicador', A, B],
       ...SIT.map(([k, l]) => [l, cmp.sit.a[k], cmp.sit.b[k]]), ['Estoque total (caixas)', cmp.somaA, cmp.somaB], [],
       ['Saíram da ruptura', cmp.sairam.length], ['Entraram em ruptura', cmp.entraram.length], ['Melhoraram', cmp.melhoraram.length], ['Pioraram', cmp.pioraram.length]]);
     const cab = ['Código', 'Descrição', 'Cliente', 'Estoque ' + A, 'Estoque ' + B, 'Variação estoque', 'Disponível ' + A, 'Disponível ' + B, 'Dias ' + A, 'Dias ' + B, 'Ganho em dias', 'OS'];
@@ -951,6 +959,7 @@ dd{margin:0;text-align:right;font-weight:600}
     const ini = lista.find((d) => isoDia(d) <= alvo) || lista[lista.length - 1];
     const opts = (sel) => lista.map((d) => '<option value="' + d + '"' + (d === sel ? ' selected' : '') + '>' + diaBR(d) + '</option>').join('');
     dialogo('<h2 id="dlg-t">Relatório semanal: ' + nomeAba + '</h2>'
+      + avisoBusca()
       + '<p class="meta">Compara duas fotos do estoque: o que melhorou, o que piorou e quais produtos saíram ou entraram em ruptura.</p>'
       + '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label class="field" for="sem-a">De<select id="sem-a" style="min-height:46px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px">' + opts(ini) + '</select></label>'
       + '<label class="field" for="sem-b">Até<select id="sem-b" style="min-height:46px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px">' + opts(fim) + '</select></label></div>'
@@ -975,7 +984,7 @@ dd{margin:0;text-align:right;font-weight:600}
       } catch (e) { $('sem-prev').innerHTML = '<span style="color:var(--falta)">Não deu para carregar as fotos. Tente de novo.</span>'; }
     };
     $('sem-a').addEventListener('change', prever); $('sem-b').addEventListener('change', prever);
-    const nomeBase = () => 'Relatorio semanal ' + (aba === 'jit' ? 'JIT' : 'Genericos') + ' ' + diaBR(atual.a).replace(/\//g, '-') + ' a ' + diaBR(atual.b).replace(/\//g, '-');
+    const nomeBase = () => 'Relatorio semanal ' + (aba === 'jit' ? 'JIT' : 'Genericos') + ' ' + diaBR(atual.a).replace(/\//g, '-') + ' a ' + diaBR(atual.b).replace(/\//g, '-') + arqBusca();
     $('sem-pdf').addEventListener('click', () => {
       if (!atual) return;
       if (!window.jspdf || !window.jspdf.jsPDF) { toast('O gerador de PDF não carregou. Recarregue a página e tente de novo.', true); return; }
