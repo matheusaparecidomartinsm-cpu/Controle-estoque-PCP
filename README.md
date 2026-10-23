@@ -13,17 +13,22 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 
 ## Onde ele roda
 
-O `index.html` foi feito para rodar como página publicada no claude.ai. Ele usa recursos dessa plataforma que não existem fora dela:
+O site é estático (`index.html`) e está publicado na Vercel, ligado a este repositório: cada push na `main` gera um deploy novo.
 
-- `db`: guarda as listas de produtos e as OS importadas.
-- `user`: libera os botões de importar só para quem pode editar.
-- `downloads`: entrega o PDF do relatório.
+Os dados ficam no Supabase:
 
-Aberto direto do GitHub (ou pelo GitHub Pages), o layout carrega, mas os dados não, e aparece o aviso "Os dados não carregaram nesta visualização". Para rodar fora do claude.ai, é preciso trocar esse armazenamento por um banco próprio (por exemplo, Supabase) e o download por um link comum.
+- Tabela `estoque_pcp`: uma linha para cada lista (`jit`, `gen`), mais `os` (última importação de OS) e `config` (códigos do Prioridades O.S do relatório). O campo `data` guarda a lista em JSON.
+- Tabela `estoque_pcp_permitidos`: e-mails que podem ver e alterar o estoque. As regras de acesso (RLS) bloqueiam qualquer outro usuário.
+- Login com e-mail e senha do Supabase Auth. Quem digita só o usuário (ex.: `matheuspcp`) entra como `matheuspcp@profood.local`.
+- A chave usada no site é a publicável do Supabase, feita para ficar no navegador; o que protege os dados são as regras de acesso.
+
+Para liberar outra pessoa: crie o usuário no Supabase Auth e inclua o e-mail dela em `estoque_pcp_permitidos`.
 
 ## Bibliotecas
 
-Carregadas pelo cdnjs:
+Carregadas por CDN:
+
+- Supabase JS 2.45.4: login e banco de dados
 
 - SheetJS (xlsx 0.18.5): leitura das planilhas
 - jsPDF 2.5.1 e jsPDF-AutoTable 3.8.2: geração do relatório em PDF

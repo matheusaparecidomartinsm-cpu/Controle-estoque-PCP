@@ -93,6 +93,9 @@ tbody tr:last-child td{border-bottom:0}
 .anim td{background-image:linear-gradient(var(--accent),var(--accent));background-repeat:no-repeat;background-size:0% 2px;background-position:0% 100%;animation:scan .2s linear forwards;animation-delay:calc(var(--r) + var(--k))}
 .anim td>.v{display:inline-block;clip-path:inset(0 100% 0 0);animation:reveal .24s ease-out forwards;animation-delay:calc(var(--r) + var(--k) + .05s)}
 .anim td>.v.item,.v.item{display:flex}
+.login{max-width:420px;align-items:stretch}
+.login .seal{width:48px;height:48px;border-radius:12px}
+#conn{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .empty{padding:56px 20px;text-align:center;color:var(--kraft);font-size:16px;display:flex;flex-direction:column;align-items:center;gap:12px}
 .empty strong{font-family:var(--display);font-size:22px;font-weight:700;color:var(--paper)}
 /* janelas */
@@ -143,7 +146,7 @@ dd{margin:0;text-align:right;font-weight:600}
       <span class="seal" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path></svg></span>
       <h1 class="brand">Controle Estoque PCP<small>ProFood Embalagens</small></h1>
     </div>
-    <span class="updated" id="conn">Carregando dados…</span>
+    <span class="updated" id="conn"></span>
   </div>
 </header>
 
@@ -206,6 +209,7 @@ dd{margin:0;text-align:right;font-weight:600}
 
 <div id="layer"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -627,39 +631,101 @@ dd{margin:0;text-align:right;font-weight:600}
       try {
         if (state.canEdit && state.db) { state.db.doc('estoque/config').set({ prioridades: c.prioridades, excluirClientes: c.excluirClientes }).catch(() => {}); }
         const blob = gerarPDF(r, c);
-        const dl = await window.claude?.use?.('downloads');
-        if (!dl) throw { code: 'unavailable' };
         const d = new Date(r.base || Date.now());
-        await dl.save({ filename: 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + '.pdf', data: blob });
+        const nomeArq = 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + '.pdf';
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nomeArq;
+        document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
         fechar(); toast('Relatório baixado com ' + r.itens.length + ' itens.');
       } catch (err) {
         btn.disabled = false; btn.textContent = 'Baixar relatório em PDF';
         if (err && err.code === 'declined') return;
-        toast(err && err.code === 'rate_limited' ? 'Já tem um download esperando sua confirmação.' : 'Não deu para baixar o PDF nesta visualização. Abra a página pelo claude.ai e tente de novo.', true);
+        toast(err && err.code === 'rate_limited' ? 'Já tem um download esperando sua confirmação.' : 'Não deu para gerar o PDF. Tente de novo.', true);
       }
     });
   });
 
-  // ---------- dados ----------
-  render();
-  (async () => {
-    const [db, user] = await Promise.all([window.claude?.use?.('db'), window.claude?.use?.('user')]);
-    try { state.canEdit = user ? await user.canEdit() : false; } catch (e) { state.canEdit = false; }
-    if (!db) { $('conn').textContent = 'Os dados não carregaram nesta visualização. Abra a página pelo link do claude.ai.'; render(); return; }
-    state.db = db;
-    $('conn').textContent = '';
-    let primeira = { jit: true, gen: true };
-    for (const t of ['jit', 'gen']) {
-      db.doc('estoque/' + t).onSnapshot((snap) => {
-        state.docs[t] = snap.exists ? snap.data() : null;
-        const anima = primeira[t] || !snap.metadata.hasPendingWrites;
-        primeira[t] = false;
-        rerender(state.tab === t ? anima : false);
-      }, () => { $('conn').textContent = 'A conexão com os dados caiu. Recarregue a página.'; });
+  // ---------- dados (Supabase) ----------
+  const SUPA_URL = 'https://mnvyitxutjvsoqgfftxn.supabase.co';
+  const SUPA_KEY = 'sb_publishable_Oxodo29Euz7H_cCA1fRNCQ_Iobo-dqp';
+  const sb = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+  const linhas = {};
+  function aplicar(id, data) {
+    linhas[id] = data;
+    if (id === 'jit' || id === 'gen') state.docs[id] = data && Array.isArray(data.itens) ? data : null;
+    if (id === 'os') state.osInfo = data;
+    if (id === 'config') state.relCfg = data;
+  }
+  async function gravar(id, data) {
+    const { error } = await sb.from('estoque_pcp').upsert({ id, data }, { onConflict: 'id' });
+    if (error) throw error;
+    aplicar(id, data);
+    rerender(id === state.tab);
+  }
+  state.db = {
+    doc: (path) => {
+      const id = path.split('/')[1];
+      return {
+        set: (data) => gravar(id, data),
+        update: (parte) => gravar(id, Object.assign({}, linhas[id] || {}, parte))
+      };
     }
-    db.doc('estoque/os').onSnapshot((snap) => { state.osInfo = snap.exists ? snap.data() : null; rerender(false); });
-    db.doc('estoque/config').onSnapshot((snap) => { state.relCfg = snap.exists ? snap.data() : null; });
-  })();
+  };
+  async function carregar() {
+    const { data, error } = await sb.from('estoque_pcp').select('id,data');
+    if (error) { $('conn').textContent = 'Não deu para carregar os dados. Recarregue a página.'; return; }
+    ['jit', 'gen', 'os', 'config'].forEach((id) => aplicar(id, null));
+    (data || []).forEach((r) => aplicar(r.id, r.data));
+    rerender(true);
+  }
+  let canal = null;
+  function ouvir() {
+    if (canal) return;
+    canal = sb.channel('estoque_pcp').on('postgres_changes', { event: '*', schema: 'public', table: 'estoque_pcp' }, (p) => {
+      if (p.new && p.new.id) { aplicar(p.new.id, p.new.data); rerender(p.new.id === state.tab); }
+    }).subscribe();
+  }
+  function telaLogin(msg) {
+    layer.innerHTML = '<div class="overlay center"><form class="dialog login" id="login" novalidate aria-labelledby="lg-t">'
+      + '<span class="seal" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path></svg></span>'
+      + '<h2 id="lg-t">Entrar no Controle Estoque PCP</h2>'
+      + '<p class="meta">Use o mesmo usuário e senha dos outros painéis da ProFood.</p>'
+      + (msg ? '<p class="err" role="alert">' + esc(msg) + '</p>' : '')
+      + '<label class="field" for="lg-user">Usuário<input id="lg-user" autocomplete="username" placeholder="Ex.: matheuspcp" required></label>'
+      + '<label class="field" for="lg-pass">Senha<input id="lg-pass" type="password" autocomplete="current-password" required></label>'
+      + '<button class="btn solid" type="submit" id="lg-ok" style="justify-content:center">Entrar</button>'
+      + '</form></div>';
+    $('lg-user').focus();
+    $('login').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      let u = $('lg-user').value.trim().toLowerCase(); const s = $('lg-pass').value;
+      if (!u || !s) { telaLogin('Preencha o usuário e a senha.'); return; }
+      if (!u.includes('@')) u += '@profood.local';
+      $('lg-ok').disabled = true; $('lg-ok').textContent = 'Entrando…';
+      const { error } = await sb.auth.signInWithPassword({ email: u, password: s });
+      if (error) { telaLogin('Usuário ou senha incorretos. Confira e tente de novo.'); return; }
+    });
+  }
+  async function entrou(session) {
+    fechar();
+    const email = session.user.email || '';
+    const { data: pode } = await sb.rpc('estoque_pcp_pode');
+    state.canEdit = !!pode;
+    $('conn').innerHTML = '<span>' + esc(email.replace('@profood.local', '')) + '</span> <button class="btn quiet" type="button" id="sair" style="min-height:36px;padding:0 12px;margin-left:8px">Sair</button>';
+    $('sair').addEventListener('click', async () => { await sb.auth.signOut(); });
+    if (!pode) { $('conn').insertAdjacentHTML('afterbegin', '<span style="color:var(--falta)">Este usuário não tem acesso ao estoque. </span>'); render(); return; }
+    await carregar();
+    ouvir();
+  }
+
+  render();
+  if (!sb) { $('conn').textContent = 'O banco de dados não carregou. Confira a internet e recarregue a página.'; }
+  else {
+    $('conn').textContent = '';
+    sb.auth.onAuthStateChange((ev, session) => {
+      if (session && (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION')) setTimeout(() => entrou(session), 0);
+      if (!session) { if (canal) { sb.removeChannel(canal); canal = null; } state.canEdit = false; ['jit', 'gen', 'os', 'config'].forEach((id) => aplicar(id, null)); $('conn').textContent = ''; render(); telaLogin(); }
+    });
+  }
 })();
 </script>
 </body>
