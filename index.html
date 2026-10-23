@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:dark}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>Controle Estoque PCP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: cabeçalho com selo de caixa, abas em trilho, barra de ferramentas única, e a planilha num painel de papelão escuro; cada linha é "etiquetada" da esquerda para a direita ao carregar. Tema escuro por escolha. */
+:root{
+  --bg:#0D0C0B;          /* fundo: preto quente */
+  --surface:#161513;     /* painéis */
+  --surface-2:#1E1C19;   /* cabeçalho da tabela, campos */
+  --line:#2D2A26;        /* bordas */
+  --rule:#221F1C;        /* divisórias das linhas */
+  --raise:#1B1916;       /* hover */
+  --paper:#F2EDE6;       /* texto */
+  --kraft:#A69C90;       /* texto secundário */
+  --dim:#6E665D;         /* vazio */
+  --accent:#D4A373;      /* kraft: cor da marca */
+  --accent-ink:#1A120A;  /* texto sobre o kraft */
+  --falta:#F0555B;
+  --critico:#EE8A3E;
+  --atencao:#E5C15C;
+  --ok:#5FC49B;
+  --sem:#7A736B;
+  --obs:#D8C29E;
+  --display:'Familjen Grotesk','Helvetica Neue',Arial,sans-serif;
+  --body:'Figtree','Segoe UI',Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px;font-variant-numeric:tabular-nums}
+.wrap{max-width:1680px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{border-bottom:1px solid var(--rule);background:linear-gradient(180deg,#14120F 0%,var(--bg) 100%)}
+header .wrap{padding-block:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.brandbox{display:flex;align-items:center;gap:12px}
+.seal{width:40px;height:40px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.brand{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0;line-height:1.1}
+.brand small{display:block;font-family:var(--body);font-size:13px;font-weight:500;color:var(--kraft);letter-spacing:0}
+.updated{color:var(--kraft);font-size:14px}
+main.wrap{padding-block:28px 80px;display:flex;flex-direction:column;gap:16px}
+.tabsrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.tabs{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.tab{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 18px;border:0;border-radius:9px;background:none;color:var(--kraft);font-family:var(--display);font-size:17px;font-weight:600;cursor:pointer;transition:background-color .2s,color .2s}
+.tab span{min-width:28px;padding:2px 8px;border-radius:999px;background:var(--surface-2);font-family:var(--body);font-size:13px;font-weight:600;color:var(--kraft);text-align:center}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.tab[aria-selected="true"] span{background:rgba(26,18,10,.16);color:var(--accent-ink)}
+.tab:hover:not([aria-selected="true"]){color:var(--paper);background:var(--raise)}
+.meta{color:var(--kraft);font-size:14px;margin:0}
+#tabmeta{display:inline-flex;align-items:center;gap:8px}
+#tabmeta:not(:empty)::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(95,196,155,.18)}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
+.filters{display:contents}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--paper);font-family:var(--body);font-size:15px;font-weight:600;cursor:pointer;transition:background-color .2s,border-color .2s,color .2s}
+.btn:hover{border-color:var(--accent);color:var(--paper)}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.solid:hover{background:#E0B385;border-color:#E0B385;color:var(--accent-ink)}
+.btn.quiet{background:transparent}
+.btn svg{flex-shrink:0}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,textarea:focus-visible,label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.search{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);width:340px;max-width:100%}
+.search input{border:0;outline:0;flex:1;min-width:0;background:transparent;color:var(--paper);font-family:var(--body);font-size:15px}
+.sheet{max-height:78vh;overflow:auto;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+table{width:100%;min-width:1600px;border-collapse:separate;border-spacing:0}
+th{position:sticky;top:0;z-index:1;background:var(--surface-2);text-align:left;padding:13px 14px;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);white-space:nowrap}
+th.n,td.n{text-align:right}
+th:first-child{min-width:460px;padding-left:20px}
+td{padding:10px 14px;border-bottom:1px solid var(--rule);white-space:nowrap;vertical-align:middle}
+td:first-child{white-space:normal;padding-left:20px}
+td.obs{white-space:normal;min-width:220px;font-size:14px;color:var(--obs)}
+tr.r{transition:background-color .2s}
+tr.r:hover{background:var(--raise)}
+tbody tr:last-child td{border-bottom:0}
+.item{display:flex;align-items:flex-start;gap:12px}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:7px}
+.desc{display:flex;flex-direction:column;gap:3px;padding:2px 0;border:0;background:none;color:var(--paper);font-family:var(--body);font-size:15px;font-weight:500;text-align:left;cursor:pointer}
+.desc .cod{font-size:12px;font-weight:600;color:var(--accent)}
+.desc .cli{font-size:13px;color:var(--kraft);font-weight:400}
+.desc:hover .nm{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--accent)}
+.pill{display:inline-block;min-width:54px;padding:3px 10px;border-radius:999px;font-weight:700;font-size:14px;text-align:center}
+.muted{color:var(--dim)}
+/* etiquetagem: uma linha kraft corre embaixo da linha e as células aparecem da esquerda para a direita */
+@keyframes scan{0%{background-size:0% 2px;background-position:0% 100%}50%{background-size:100% 2px;background-position:0% 100%}50.1%{background-size:100% 2px;background-position:100% 100%}100%{background-size:0% 2px;background-position:100% 100%}}
+@keyframes reveal{to{clip-path:inset(0 0 0 0)}}
+.anim td{background-image:linear-gradient(var(--accent),var(--accent));background-repeat:no-repeat;background-size:0% 2px;background-position:0% 100%;animation:scan .2s linear forwards;animation-delay:calc(var(--r) + var(--k))}
+.anim td>.v{display:inline-block;clip-path:inset(0 100% 0 0);animation:reveal .24s ease-out forwards;animation-delay:calc(var(--r) + var(--k) + .05s)}
+.anim td>.v.item,.v.item{display:flex}
+.empty{padding:56px 20px;text-align:center;color:var(--kraft);font-size:16px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty strong{font-family:var(--display);font-size:22px;font-weight:700;color:var(--paper)}
+/* janelas */
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes slide{from{opacity:.4;transform:translateX(36px)}to{opacity:1;transform:none}}
+.overlay{position:fixed;inset:0;z-index:20;background:rgba(5,4,3,.72);backdrop-filter:blur(3px);display:flex;animation:fade .25s ease both;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.overlay.center{align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.overlay.side{justify-content:flex-end}
+.dialog{width:100%;max-width:760px;max-height:90vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px;display:flex;flex-direction:column;gap:18px;box-shadow:0 30px 80px rgba(0,0,0,.5);animation:rise .35s cubic-bezier(.22,.61,.36,1) both}
+.dialog h2,.drawer h2{margin:0;font-family:var(--display);font-size:24px;font-weight:700;text-wrap:balance}
+.cols{display:flex;flex-wrap:wrap;gap:6px}
+.col{padding:5px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--surface-2)}
+.col.ok{color:var(--ok);background:rgba(95,196,155,.12)}
+.col.miss{color:var(--falta);background:rgba(240,85,91,.12)}
+.warn{margin:0;padding:12px 14px;border-radius:10px;background:rgba(212,163,115,.1);color:var(--obs);font-size:14px;line-height:1.45}
+.err{margin:0;padding:12px 14px;border-radius:10px;background:rgba(240,85,91,.12);color:var(--falta);font-size:15px;line-height:1.45}
+.prev{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.prev table{min-width:900px;font-size:14px}
+.prev th{position:static}
+.prev td:first-child{padding-left:14px}
+.row-end{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:1.4;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--accent);flex-shrink:0;margin-top:1px}
+.drawer{width:470px;max-width:100%;height:100%;overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);padding:28px;display:flex;flex-direction:column;gap:22px;animation:slide .35s cubic-bezier(.22,.61,.36,1) both}
+.big{display:flex;align-items:baseline;gap:12px;padding:18px;border-radius:14px;background:var(--surface-2);border-left:5px solid var(--sem)}
+.big b{font-family:var(--display);font-size:52px;font-weight:700;line-height:1}
+dl{margin:0;border-radius:12px;border:1px solid var(--line);padding:4px 16px}
+dl div{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--rule)}
+dl div:last-child{border-bottom:0}
+dt{color:var(--kraft)}
+dd{margin:0;text-align:right;font-weight:600}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.seg button{min-height:42px;border-radius:9px;border:0;background:transparent;color:var(--kraft);font-family:var(--body);font-size:15px;font-weight:600;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--kraft)}
+.field input,.field textarea{min-height:46px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:16px}
+.close{width:44px;height:44px;flex-shrink:0;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--paper);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:30;width:min(440px,calc(100% - 32px));padding:14px 18px;border-radius:12px;border:1px solid var(--line);border-left:4px solid var(--ok);background:var(--surface-2);color:var(--paper);font-size:15px;font-weight:600;box-shadow:0 20px 50px rgba(0,0,0,.45);animation:rise .35s cubic-bezier(.22,.61,.36,1) both}
+.toast.bad{border-left-color:var(--falta)}
+@media (max-width:640px){.toolbar{padding:10px}.search{width:100%}.tab{padding:0 12px;font-size:15px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.anim td>.v{clip-path:none}}
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="brandbox">
+      <span class="seal" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path></svg></span>
+      <h1 class="brand">Controle Estoque PCP<small>ProFood Embalagens</small></h1>
+    </div>
+    <span class="updated" id="conn">Carregando dados…</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabsrow">
+    <div class="tabs" role="tablist" aria-label="Tipo de produto">
+      <button class="tab" role="tab" id="tab-jit" data-tab="jit" aria-selected="true">Produtos JIT <span id="n-jit">0</span></button>
+      <button class="tab" role="tab" id="tab-gen" data-tab="gen" aria-selected="false">Genéricos <span id="n-gen">0</span></button>
+    </div>
+    <p class="meta" id="tabmeta"></p>
+  </div>
+
+  <section class="toolbar" aria-label="Importar e buscar">
+    <div class="filters">
+      <div class="actions" id="actions">
+        <button class="btn solid" id="imp-estoque" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9"></path><path d="M7 14l5-5 5 5"></path><path d="M5 3h14"></path></svg>
+          Importar planilha de estoque
+        </button>
+        <button class="btn" id="imp-os" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9"></path><path d="M7 14l5-5 5 5"></path><path d="M5 3h14"></path></svg>
+          Importar planilha de OS
+        </button>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden>
+        <button class="btn quiet" id="relatorio" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"></path><path d="M14 3v4h4"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg>
+          Gerar relatório de 45 dias
+        </button>
+      </div>
+      <label class="search" for="q">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--kraft)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="search" id="q" placeholder="Buscar código, produto ou cliente" aria-label="Buscar produto">
+      </label>
+    </div>
+  </section>
+
+  <div class="sheet">
+    <table>
+      <thead>
+        <tr>
+          <th>Descrição produto</th>
+          <th class="n">Média mensal</th>
+          <th class="n">Qtd. por caixa</th>
+          <th class="n">Estoque</th>
+          <th class="n">Empenhado</th>
+          <th class="n">Disponível</th>
+          <th class="n">Dias</th>
+          <th>Ruptura</th>
+          <th>OS</th>
+          <th>Última movimentação</th>
+          <th>Previsão</th>
+          <th>Observação</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+</main>
+
+<div id="layer"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+(function () {
+  const ST = {
+    falta: { label: 'Em falta', cor: 'var(--falta)', bg: 'rgba(240,85,91,.16)' },
+    critico: { label: 'Crítico', cor: 'var(--critico)', bg: 'rgba(238,138,62,.15)' },
+    atencao: { label: 'Atenção', cor: 'var(--atencao)', bg: 'rgba(229,193,92,.14)' },
+    ok: { label: 'Em dia', cor: 'var(--ok)', bg: 'rgba(95,196,155,.12)' },
+    sem: { label: 'Sem giro', cor: 'var(--sem)', bg: 'rgba(122,115,107,.16)' }
+  };
+  const ORDER = ['falta', 'critico', 'atencao', 'ok', 'sem'];
+  const CLI = [['BATEL GRILL','Batel Grill'],['MR FRITZ','Mr. Fritz'],['CACHORRAO','Cachorrão do Claudião'],['CACHORRÃO','Cachorrão do Claudião'],['BUTECO','Buteco Seu Rufino'],['MANE','Mané'],['MANÉ','Mané'],['SODIE','Sodiê'],['SODIÊ','Sodiê'],['JAH','Jah Açaí'],['THE BEST','The Best Açaí'],['THE BETS','The Best Açaí'],['ESPETTO','Espetto Carioca'],['COCO BAMBU','Coco Bambu'],['ALEMAO','Bar do Alemão SP'],['ALEMÃO','Bar do Alemão SP'],['TT BURGER','TT Burger'],['CAMARADA','Camarada Camarão'],['VASTO','Vasto'],['NANICA','Nanica'],['GREENJOY','Greenjoy'],['SEVERO','Severo Burger'],['PANTANAL','Pantanal'],['OGGI','Oggi Sorvetes'],['DOG KING','Dog King'],['HORA DO PASTEL','Hora do Pastel'],['PROFOOD','ProFood'],['IPT','IPT'],['BATATA INGLESA','Batata Inglesa'],['AGUA DOCE','Água Doce'],['ÁGUA DOCE','Água Doce'],['GREEN JOY','Greenjoy']];
+
+  const state = { tab: 'jit', status: 'todos', q: '', docs: { jit: null, gen: null }, osInfo: null, sel: null, canEdit: false, db: null, anim: true };
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = (n) => Math.round(n).toLocaleString('pt-BR');
+  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cliente = (nome) => { const u = ' ' + String(nome).toUpperCase() + ' '; for (const [k, v] of CLI) { if (new RegExp('[^A-ZÀ-Ú]' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^A-ZÀ-Ú]').test(u)) return v; } return ''; };
+  const dd = (d) => String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+  const dataLonga = (iso) => { const d = new Date(iso); return dd(d) + '/' + d.getFullYear() + ' às ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+
+  function computa(it, i, baseIso) {
+    const [cod, nome, cli, media, cx, estoque, emp, os, etapa, prev, obs, sem] = it;
+    const disp = estoque - emp;
+    const porDia = media / 30;
+    const semGiro = !!sem || !(porDia > 0);
+    const cob = semGiro ? 1e9 : disp / porDia;
+    const st = semGiro ? 'sem' : disp < 0 ? 'falta' : cob < 20 ? 'critico' : cob < 40 ? 'atencao' : 'ok';
+    let rupt = '—', ruptDias = null;
+    if (!semGiro) {
+      const base = baseIso ? new Date(baseIso) : new Date();
+      base.setHours(0, 0, 0, 0);
+      const d = new Date(base); d.setDate(d.getDate() + Math.round(cob));
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      ruptDias = disp <= 0 ? Math.min(0, Math.round((d - hoje) / 864e5)) : Math.round((d - hoje) / 864e5);
+      rupt = ruptDias <= 0 ? 'Já em ruptura' : dd(d) + ', em ' + ruptDias + (ruptDias === 1 ? ' dia' : ' dias');
+    }
+    return { i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob) };
+  }
+
+  function lista(tab) {
+    const doc = state.docs[tab];
+    if (!doc || !Array.isArray(doc.itens)) return [];
+    return doc.itens.map((it, i) => computa(it, i, doc.atualizadoEm)).sort((a, b) => a.cob - b.cob);
+  }
+
+  function render() {
+    for (const t of ['jit', 'gen']) {
+      $('n-' + t).textContent = state.docs[t]?.itens?.length || 0;
+      $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
+    }
+    const doc = state.docs[state.tab];
+    const nomeAba = state.tab === 'jit' ? 'produtos JIT' : 'genéricos';
+    $('tabmeta').textContent = doc?.atualizadoEm
+      ? 'Atualizado em ' + dataLonga(doc.atualizadoEm)
+      : '';
+    const all = lista(state.tab);
+    const q = norm(state.q);
+    const byQ = all.filter((r) => !q || norm(r.nome).includes(q) || norm(r.cod).includes(q) || norm(r.cli).includes(q));
+    const rows = byQ;
+    const tb = $('tbody');
+    tb.classList.toggle('anim', state.anim);
+    tb.innerHTML = rows.map((r, idx) => {
+      const m = ST[r.st];
+      const k = (n) => '--k:' + (n * 0.1).toFixed(2) + 's';
+      const cell = (n, cls, inner, extra) => '<td' + (cls ? ' class="' + cls + '"' : '') + ' style="' + k(n) + (extra || '') + '"><span class="v">' + inner + '</span></td>';
+      const txt = (v) => v ? esc(v) : '<span class="muted">—</span>';
+      return '<tr class="r" style="--r:' + (Math.min(idx, 60) * 0.06).toFixed(2) + 's">'
+        + '<td style="' + k(0) + '"><span class="v item"><span class="dot" style="background:' + m.cor + '" title="' + m.label + '"></span><button class="desc" type="button" data-i="' + r.i + '"><span class="cod">' + esc(r.cod) + '</span><span class="nm">' + esc(r.nome) + '</span><span class="cli">' + esc(r.cli) + '</span></button></span></td>'
+        + cell(1, 'n', fmt(r.media)) + cell(2, 'n', fmt(r.cx)) + cell(3, 'n', fmt(r.estoque)) + cell(4, 'n', fmt(r.emp))
+        + cell(5, 'n', '<span style="font-weight:600;color:' + (r.disp < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + fmt(r.disp) + '</span>')
+        + cell(6, 'n', '<span class="pill" style="color:' + (r.semGiro ? 'var(--kraft)' : m.cor) + ';background:' + m.bg + '">' + esc(r.dias) + '</span>')
+        + cell(7, '', '<span style="font-weight:' + (r.ruptDias !== null && r.ruptDias <= 0 ? 700 : 500) + ';color:' + (r.semGiro ? 'var(--dim)' : r.ruptDias <= 0 ? 'var(--falta)' : r.st === 'ok' ? 'var(--paper)' : m.cor) + '">' + esc(r.rupt) + '</span>')
+        + cell(8, '', txt(r.os)) + cell(9, '', txt(r.etapa)) + cell(10, '', txt(r.prev))
+        + cell(11, 'obs', esc(r.obs))
+        + '</tr>';
+    }).join('');
+    const empty = $('empty');
+    if (!doc) {
+      empty.hidden = false;
+      empty.innerHTML = '<strong>Nenhum estoque importado nos ' + nomeAba + '</strong><span>' + (state.canEdit ? 'Use “Importar planilha de estoque” para carregar a planilha do dia.' : 'Quando o PCP importar a planilha do dia, os produtos aparecem aqui.') + '</span>';
+    } else if (!rows.length) {
+      empty.hidden = false;
+      empty.innerHTML = '<span>Nenhum produto encontrado na busca. Confira o código ou o nome digitado.</span>';
+    } else empty.hidden = true;
+    $('actions').hidden = !state.canEdit;
+  }
+
+  function rerender(anim) { state.anim = anim; render(); }
+
+  // ---------- eventos ----------
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; state.status = 'todos'; state.q = ''; $('q').value = ''; rerender(true); }));
+  let qt; $('q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { state.q = e.target.value; rerender(false); }, 120); });
+  $('tbody').addEventListener('click', (e) => { const b = e.target.closest('.desc'); if (b) abrirProduto(Number(b.dataset.i)); });
+
+  let toastT;
+  function toast(msg, bad) {
+    clearTimeout(toastT);
+    const el = document.querySelector('.toast') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'toast', role: 'status' }));
+    el.className = 'toast' + (bad ? ' bad' : ''); el.textContent = msg;
+    toastT = setTimeout(() => el.remove(), 4200);
+  }
+  const layer = $('layer');
+  const fechar = () => { layer.innerHTML = ''; };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(); });
+
+  // ---------- detalhe ----------
+  function abrirProduto(i) {
+    const doc = state.docs[state.tab]; if (!doc) return;
+    const r = computa(doc.itens[i], i, doc.atualizadoEm);
+    const m = ST[r.st];
+    let tipo = 'entrada';
+    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']];
+    layer.innerHTML = '<div class="overlay side" data-close><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dt"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:6px"><span class="meta">' + esc(r.cli) + ', código ' + esc(r.cod) + '</span><h2 id="dt">' + esc(r.nome) + '</h2></div><button class="close" type="button" data-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>'
+      + '<div class="big" style="border-left-color:' + m.cor + '"><b style="color:' + m.cor + '">' + esc(r.dias) + '</b><span>' + (r.semGiro ? 'sem consumo no período' : 'dias de estoque, ' + m.label.toLowerCase()) + '</span></div>'
+      + '<dl>' + linhas.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + esc(b) + '</dd></div>').join('') + '</dl>'
+      + (r.obs ? '<p class="warn">' + esc(r.obs) + '</p>' : '')
+      + (state.canEdit ? '<div style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:18px">Registrar movimentação</h2><div class="seg"><button type="button" data-tipo="entrada" aria-pressed="true">Entrada</button><button type="button" data-tipo="saida" aria-pressed="false">Saída</button></div><label class="field" for="qtd">Quantidade em caixas<input type="number" id="qtd" min="1" placeholder="Ex.: 20"></label><button class="btn solid" type="button" id="salvar-mov" style="justify-content:center">Registrar entrada</button></div>' : '')
+      + '</aside></div>';
+    layer.querySelector('.overlay').addEventListener('click', (e) => { if (e.target.hasAttribute('data-close') || e.target.closest('button[data-close]')) fechar(); });
+    layer.querySelectorAll('[data-tipo]').forEach((b) => b.addEventListener('click', () => { tipo = b.dataset.tipo; layer.querySelectorAll('[data-tipo]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); $('salvar-mov').textContent = 'Registrar ' + (tipo === 'entrada' ? 'entrada' : 'saída'); }));
+    const sv = $('salvar-mov');
+    if (sv) sv.addEventListener('click', async () => {
+      const n = Math.round(Number($('qtd').value));
+      if (!(n > 0)) { toast('Digite uma quantidade maior que zero.', true); return; }
+      const itens = doc.itens.map((x) => x.slice());
+      itens[i][5] = itens[i][5] + (tipo === 'entrada' ? n : -n);
+      try {
+        await state.db.doc('estoque/' + state.tab).update({ itens });
+        fechar(); toast((tipo === 'entrada' ? 'Entrada' : 'Saída') + ' de ' + fmt(n) + ' caixas registrada no ' + r.cod + '.');
+      } catch (e) { toast('Não deu para salvar a movimentação. Tente de novo.', true); }
+    });
+  }
+
+  // ---------- importação ----------
+  const MAP_EST = {
+    cod: ['codnovo', 'codigonovo', 'codigo', 'cod', 'codproduto', 'codigoproduto'],
+    nome: ['descricaoproduto', 'descricao', 'produto', 'descricaodoproduto'],
+    media: ['mediamensal', 'media', 'mediames'],
+    cx: ['quantidadeporcaixa', 'qtdporcaixa', 'qtdcaixa', 'quantidadecaixa', 'qtdecaixa'],
+    estoque: ['estoque', 'estoqueatual'],
+    emp: ['empenhado', 'empenho'],
+    dias: ['dias'],
+    os: ['os', 'numeroos', 'ordemdeservico', 'nos', 'nos'],
+    etapa: ['ultimamovimentacao', 'movimentacao', 'etapa'],
+    prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo'],
+    obs: ['observacao', 'observacoes', 'obs']
+  };
+  const MAP_OS = {
+    os: ['os', 'numeroos', 'numerodaos', 'ordemdeservico', 'nos', 'osnumero', 'numero'],
+    cod: ['codnovo', 'codigonovo', 'codigoproduto', 'codproduto', 'codigo', 'cod', 'coditem', 'codigoitem'],
+    nome: ['descricaoproduto', 'descricao', 'produto', 'item', 'descricaodoproduto'],
+    etapa: ['ultimamovimentacao', 'movimentacao', 'etapa', 'setor', 'status', 'situacao', 'fase', 'posicao'],
+    prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo', 'entrega', 'dataentrega', 'prazoentrega', 'datadeentrega']
+  };
+  const NOMES = { cod: 'Código', nome: 'Descrição produto', media: 'Média mensal', cx: 'Qtd. por caixa', estoque: 'Estoque', emp: 'Empenhado', dias: 'Dias', os: 'OS', etapa: 'Última movimentação', prev: 'Previsão', obs: 'Observação' };
+
+  function acharColunas(header, map) {
+    const h = header.map(norm); const res = {}; const usados = new Set();
+    for (const [campo, alts] of Object.entries(map)) {
+      let idx = -1;
+      for (const a of alts) { idx = h.findIndex((x, j) => x === a && !usados.has(j)); if (idx >= 0) break; }
+      if (idx < 0) for (const a of alts) { if (a.length < 4) continue; idx = h.findIndex((x, j) => x.startsWith(a) && !usados.has(j)); if (idx >= 0) break; }
+      if (idx >= 0) { res[campo] = idx; usados.add(idx); }
+    }
+    return res;
+  }
+  function num(v) {
+    if (typeof v === 'number') return v;
+    const s = String(v ?? '').trim(); if (!s) return 0;
+    const t = s.replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+    const n = parseFloat(t); return isNaN(n) ? 0 : n;
+  }
+  function texto(v) {
+    if (v instanceof Date) return dd(v);
+    if (typeof v === 'number' && v > 30000 && v < 80000) { const d = XLSX.SSF.parse_date_code(v); return String(d.d).padStart(2, '0') + '/' + String(d.m).padStart(2, '0'); }
+    return String(v ?? '').trim();
+  }
+  function lerArquivo(file) {
+    return new Promise((ok, fail) => {
+      const fr = new FileReader();
+      fr.onload = () => { try { const wb = XLSX.read(fr.result, { type: 'array', cellDates: true }); ok(wb); } catch (e) { fail(e); } };
+      fr.onerror = () => fail(fr.error);
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function acharTabela(wb, testa) {
+    for (const nome of wb.SheetNames) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, defval: '', raw: true });
+      for (let i = 0; i < Math.min(rows.length, 25); i++) { if (testa(rows[i].map(norm))) return { rows, hi: i, aba: nome }; }
+    }
+    return null;
+  }
+  function codigoDe(cod, nome) {
+    let c = texto(cod).replace(/\.0+$/, '');
+    let n = texto(nome);
+    const m = n.match(/^\s*(\d+)\s*-\s*(.*)$/);
+    if (m) { if (!c) c = m[1]; n = m[2]; }
+    return [c, n];
+  }
+
+  async function importarEstoque(file) {
+    const wb = await lerArquivo(file);
+    const t = acharTabela(wb, (h) => h.includes('estoque') && h.some((x) => x.startsWith('descricao') || x === 'produto'));
+    if (!t) throw new Error('Não achei o cabeçalho da planilha. Ela precisa ter as colunas “Descrição produto” e “Estoque” nas primeiras linhas.');
+    const col = acharColunas(t.rows[t.hi], MAP_EST);
+    const falta = ['nome', 'media', 'estoque', 'emp'].filter((c) => col[c] === undefined);
+    if (falta.length) throw new Error('Faltam colunas obrigatórias: ' + falta.map((c) => NOMES[c]).join(', ') + '.');
+    const itens = []; let semCod = 0;
+    for (let i = t.hi + 1; i < t.rows.length; i++) {
+      const r = t.rows[i]; const g = (c) => col[c] === undefined ? '' : r[col[c]];
+      const bruto = texto(g('nome'));
+      if (!bruto || norm(bruto).startsWith('descricao')) continue;
+      const [cod, nome] = codigoDe(g('cod'), bruto);
+      if (!cod) semCod++;
+      const diasTxt = norm(g('dias'));
+      const sem = diasTxt.startsWith('semgiro') ? 'Sem giro' : diasTxt.startsWith('semmedia') ? 'Sem média' : '';
+      const os = texto(g('os')).replace(/\.0+$/, '').replace(/\.$/, '');
+      const et = texto(g('etapa'));
+      itens.push([cod, nome, cliente(nome), num(g('media')), num(g('cx')), num(g('estoque')), num(g('emp')), os, et ? et[0].toUpperCase() + et.slice(1).toLowerCase() : '', texto(g('prev')), texto(g('obs')), sem]);
+    }
+    if (!itens.length) throw new Error('A planilha não tem nenhuma linha de produto abaixo do cabeçalho.');
+    return { itens, col, aba: t.aba, semCod, semCli: itens.filter((x) => !x[2]).length };
+  }
+
+  async function importarOS(file) {
+    const wb = await lerArquivo(file);
+    const t = acharTabela(wb, (h) => h.some((x) => MAP_OS.os.slice(0, 6).includes(x)));
+    if (!t) throw new Error('Não achei a coluna de OS nas primeiras linhas. A planilha precisa ter uma coluna chamada “OS” (ou “Nº OS”, “Ordem de serviço”).');
+    const col = acharColunas(t.rows[t.hi], MAP_OS);
+    if (col.cod === undefined && col.nome === undefined) throw new Error('Não achei a coluna do produto. A planilha de OS precisa de uma coluna “Código” ou “Descrição produto” para ligar cada OS ao produto.');
+    const mapa = new Map();
+    for (let i = t.hi + 1; i < t.rows.length; i++) {
+      const r = t.rows[i]; const g = (c) => col[c] === undefined ? '' : r[col[c]];
+      const os = texto(g('os')).replace(/\.0+$/, '').replace(/\.$/, '');
+      if (!os || norm(os) === 'os') continue;
+      const [cod] = codigoDe(g('cod'), g('nome'));
+      if (!cod) continue;
+      const et = texto(g('etapa'));
+      mapa.set(cod, { os, etapa: et ? et[0].toUpperCase() + et.slice(1).toLowerCase() : '', prev: texto(g('prev')) });
+    }
+    if (!mapa.size) throw new Error('Não achei nenhuma OS ligada a um código de produto na planilha.');
+    return { mapa, col, aba: t.aba };
+  }
+
+  function chips(col, map) { return Object.keys(map).map((c) => '<span class="col ' + (col[c] !== undefined ? 'ok' : 'miss') + '">' + (NOMES[c] || c) + (col[c] !== undefined ? '' : ' (não achei)') + '</span>').join(''); }
+
+  function dialogo(html) {
+    layer.innerHTML = '<div class="overlay center" data-close><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">' + html + '</div></div>';
+    layer.querySelector('.overlay').addEventListener('click', (e) => { if (e.target.hasAttribute('data-close') && e.target.classList.contains('overlay')) fechar(); });
+    layer.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', fechar));
+  }
+
+  let modo = 'estoque';
+  $('imp-estoque').addEventListener('click', () => { modo = 'estoque'; $('file').value = ''; $('file').click(); });
+  $('imp-os').addEventListener('click', () => { modo = 'os'; $('file').value = ''; $('file').click(); });
+  $('file').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const aba = state.tab; const nomeAba = aba === 'jit' ? 'produtos JIT' : 'genéricos';
+    try {
+      if (typeof XLSX === 'undefined') throw new Error('O leitor de planilhas não carregou. Recarregue a página e tente de novo.');
+      if (modo === 'estoque') {
+        const res = await importarEstoque(file);
+        const amostra = res.itens.slice(0, 5);
+        dialogo('<h2 id="dlg-t">Importar estoque dos ' + nomeAba + '</h2>'
+          + '<p class="meta">' + esc(file.name) + ', aba “' + esc(res.aba) + '”: <b style="color:var(--paper)">' + res.itens.length + ' produtos</b> encontrados. Eles vão substituir a lista atual dos ' + nomeAba + ' (' + (state.docs[aba]?.itens?.length || 0) + ' produtos).</p>'
+          + '<div class="cols">' + chips(res.col, MAP_EST) + '</div>'
+          + (res.semCod ? '<p class="warn">' + res.semCod + ' linhas vieram sem código. Elas entram, mas a planilha de OS não consegue ligar OS a elas.</p>' : '')
+          + (aba === 'jit' && res.semCli ? '<p class="warn">' + res.semCli + ' produtos não tiveram o cliente reconhecido pelo nome. Eles aparecem como “Genérico” na coluna de cliente.</p>' : '')
+          + '<div class="prev"><table><thead><tr><th>Descrição produto</th><th class="n">Média</th><th class="n">Cx</th><th class="n">Estoque</th><th class="n">Empenhado</th><th>OS</th><th>Movimentação</th><th>Previsão</th></tr></thead><tbody>'
+          + amostra.map((x) => '<tr><td style="border-left:0;white-space:normal">' + esc(x[0]) + ' - ' + esc(x[1]) + '</td><td class="n">' + fmt(x[3]) + '</td><td class="n">' + fmt(x[4]) + '</td><td class="n">' + fmt(x[5]) + '</td><td class="n">' + fmt(x[6]) + '</td><td>' + esc(x[7]) + '</td><td>' + esc(x[8]) + '</td><td>' + esc(x[9]) + '</td></tr>').join('')
+          + '</tbody></table></div><p class="meta">Mostrando as 5 primeiras linhas.</p>'
+          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">Atualizar ' + res.itens.length + ' produtos</button></div>');
+        $('ok').addEventListener('click', async () => {
+          $('ok').disabled = true; $('ok').textContent = 'Salvando…';
+          try {
+            await state.db.doc('estoque/' + aba).set({ itens: res.itens, atualizadoEm: new Date().toISOString(), arquivo: file.name });
+            fechar(); toast('Estoque dos ' + nomeAba + ' atualizado: ' + res.itens.length + ' produtos.');
+          } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast(err && err.code === 'invalid_argument' ? 'A planilha é grande demais para salvar de uma vez. Me avise no chat que eu divido o armazenamento.' : 'Não deu para salvar. Confira a conexão e tente de novo.', true); }
+        });
+      } else {
+        const res = await importarOS(file);
+        const tabs = ['jit', 'gen'].filter((t) => state.docs[t]);
+        let bate = 0; const total = tabs.reduce((a, t) => a + state.docs[t].itens.length, 0);
+        const codsLista = new Set(); tabs.forEach((t) => state.docs[t].itens.forEach((x) => codsLista.add(x[0])));
+        res.mapa.forEach((_, c) => { if (codsLista.has(c)) bate++; });
+        const fora = res.mapa.size - bate;
+        dialogo('<h2 id="dlg-t">Importar OS</h2>'
+          + '<p class="meta">' + esc(file.name) + ', aba “' + esc(res.aba) + '”: <b style="color:var(--paper)">' + res.mapa.size + ' produtos com OS</b>, ' + bate + ' deles estão nas listas (JIT e genéricos).</p>'
+          + '<div class="cols">' + chips(res.col, MAP_OS) + '</div>'
+          + (fora ? '<p class="warn">' + fora + ' códigos da planilha de OS não estão em nenhuma lista e serão ignorados.</p>' : '')
+          + '<label class="check" for="limpar"><input type="checkbox" id="limpar"><span>Tirar a OS dos produtos que não aparecem nesta planilha (use se a planilha traz todas as OS abertas).</span></label>'
+          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">Atualizar OS de ' + bate + ' produtos</button></div>');
+        $('ok').addEventListener('click', async () => {
+          const limpar = $('limpar').checked;
+          $('ok').disabled = true; $('ok').textContent = 'Salvando…';
+          try {
+            for (const t of tabs) {
+              const itens = state.docs[t].itens.map((x) => {
+                const y = x.slice(); const o = res.mapa.get(y[0]);
+                if (o) { y[7] = o.os; if (res.col.etapa !== undefined) y[8] = o.etapa; if (res.col.prev !== undefined) y[9] = o.prev; }
+                else if (limpar) { y[7] = ''; y[8] = ''; y[9] = ''; }
+                return y;
+              });
+              await state.db.doc('estoque/' + t).update({ itens });
+            }
+            await state.db.doc('estoque/os').set({ atualizadoEm: new Date().toISOString(), arquivo: file.name, produtos: bate });
+            fechar(); toast('OS atualizadas em ' + bate + ' produtos.');
+          } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast('Não deu para salvar as OS. Confira a conexão e tente de novo.', true); }
+        });
+      }
+    } catch (err) {
+      dialogo('<h2 id="dlg-t">Não deu para ler a planilha</h2><p class="err">' + esc(err.message || 'O arquivo não abriu como planilha. Use um arquivo .xlsx, .xls ou .csv.') + '</p><div class="row-end"><button class="btn solid" type="button" data-cancel>Entendi</button></div>');
+    }
+  });
+
+  // ---------- relatório "Itens até 45 dias" ----------
+  const REL_PADRAO = { prioridades: '', excluirClientes: ['Bar do Alemão SP'] };
+  function relConfig() { return Object.assign({}, REL_PADRAO, state.relCfg || {}); }
+  function relItens(cfg) {
+    const prio = new Set(String(cfg.prioridades || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean));
+    const fora = new Set(cfg.excluirClientes || []);
+    const out = []; let base = null; let tirPrio = 0;
+    for (const t of ['jit', 'gen']) {
+      const doc = state.docs[t]; if (!doc) continue;
+      if (doc.atualizadoEm && (!base || doc.atualizadoEm > base)) base = doc.atualizadoEm;
+      doc.itens.forEach((it, i) => {
+        const r = computa(it, i, doc.atualizadoEm);
+        if (r.semGiro || !r.os) return;
+        const dias = Math.round(r.cob);
+        if (dias > 45) return;
+        if (fora.has(r.cli)) return;
+        if (prio.has(String(r.cod))) { tirPrio++; return; }
+        out.push(Object.assign({}, r, { diasN: dias }));
+      });
+    }
+    out.sort((a, b) => a.cob - b.cob);
+    return { itens: out, base, tirPrio, prioQtd: prio.size };
+  }
+  function dataBR(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
+
+  function gerarPDF(res, cfg) {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, M = 14;
+    const pos = res.base ? new Date(res.base) : new Date();
+    const hoje = new Date();
+    const VERM = [200, 30, 45], LAR = [226, 112, 20], OURO = [184, 134, 11], CINZA = [110, 110, 110], TINTA = [20, 20, 20];
+    const n = { rup: res.itens.filter((r) => r.diasN <= 0).length, cri: res.itens.filter((r) => r.diasN >= 1 && r.diasN <= 29).length, ate: res.itens.filter((r) => r.diasN >= 30).length };
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(...VERM);
+    pdf.text('PROFOOD EMBALAGENS · PCP', M, 16);
+    pdf.setFontSize(19); pdf.setTextColor(...TINTA);
+    pdf.text('Itens com até 45 dias de estoque', M, 24);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...CINZA);
+    const sub = res.prioQtd ? 'Sem os itens que já estão no relatório Prioridades O.S' : 'Itens com O.S aberta e até 45 dias de estoque';
+    pdf.text(sub, M, 29.5);
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...TINTA);
+    pdf.text('Posição de ' + dataBR(pos), W - M, 23, { align: 'right' });
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(...CINZA);
+    pdf.text('emitido em ' + dataBR(hoje), W - M, 27.5, { align: 'right' });
+    const cards = [['ITENS ATÉ 45 DIAS', res.itens.length, [90, 90, 90], TINTA], ['EM RUPTURA (≤ 0 DIAS)', n.rup, VERM, VERM], ['CRÍTICO (1 A 29 DIAS)', n.cri, LAR, LAR], ['ATENÇÃO (30 A 45 DIAS)', n.ate, OURO, OURO]];
+    const gap = 3.5, cw = (W - 2 * M - 3 * gap) / 4, cy = 35, ch = 19;
+    cards.forEach(([lab, val, borda, cor], k) => {
+      const x = M + k * (cw + gap);
+      pdf.setDrawColor(222, 222, 222); pdf.setLineWidth(0.25); pdf.roundedRect(x, cy, cw, ch, 1.2, 1.2, 'S');
+      pdf.setFillColor(...borda); pdf.rect(x, cy, 1.1, ch, 'F');
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(...CINZA);
+      pdf.text(lab.replace('≤', '<='), x + 4, cy + 5.5);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18); pdf.setTextColor(...cor);
+      pdf.text(String(val), x + 4, cy + 14.5);
+    });
+    const corDias = (d) => d <= 0 ? VERM : d < 30 ? LAR : OURO;
+    pdf.autoTable({
+      startY: cy + ch + 7,
+      margin: { left: M, right: M, top: 16, bottom: 16 },
+      head: [['ITEM', 'ESTOQUE', 'EMPENHADO', 'MÉDIA\nMENSAL', 'DIAS EM\nESTOQUE', 'O.S']],
+      body: res.itens.map((r) => [r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os]),
+      theme: 'plain',
+      styles: { font: 'helvetica', fontSize: 7.6, textColor: TINTA, cellPadding: { top: 2.1, bottom: 2.1, left: 1.5, right: 1.5 }, lineColor: [228, 228, 228], valign: 'middle' },
+      headStyles: { fontStyle: 'bold', fontSize: 6.5, textColor: CINZA, valign: 'bottom', lineWidth: { bottom: 0.4 }, lineColor: [60, 60, 60] },
+      bodyStyles: { lineWidth: { bottom: 0.15 } },
+      columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 21 }, 3: { halign: 'right', cellWidth: 17 }, 4: { halign: 'right', cellWidth: 19, fontStyle: 'bold' }, 5: { halign: 'right', cellWidth: 18 } },
+      didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; if (d.section === 'body' && d.column.index === 4) d.cell.styles.textColor = corDias(res.itens[d.row.index].diasN); },
+      showHead: 'everyPage'
+    });
+    let y = pdf.lastAutoTable.finalY + 6;
+    const exc = (cfg.excluirClientes || []).length ? ' Sem os itens do ' + cfg.excluirClientes.join(', ') + ' e' : '';
+    const nota = 'Ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. Somente itens com O.S aberta' + (res.tirPrio ? ', fora os ' + res.tirPrio + ' itens do relatório Prioridades O.S' : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA);
+    const linhas = pdf.splitTextToSize(nota, W - 2 * M);
+    if (y + linhas.length * 3.5 > 297 - 16) { pdf.addPage(); y = 20; }
+    pdf.text(linhas, M, y);
+    const total = pdf.getNumberOfPages();
+    for (let p = 1; p <= total; p++) { pdf.setPage(p); pdf.setFontSize(7); pdf.setTextColor(...CINZA); pdf.text('Página ' + p + ' de ' + total, W - M, 297 - 8, { align: 'right' }); }
+    return pdf.output('blob');
+  }
+
+  $('relatorio').addEventListener('click', () => {
+    if (!state.docs.jit && !state.docs.gen) { toast('Importe a planilha de estoque antes de gerar o relatório.', true); return; }
+    const cfg = relConfig();
+    const prev = relItens(cfg);
+    const n = { rup: prev.itens.filter((r) => r.diasN <= 0).length, cri: prev.itens.filter((r) => r.diasN >= 1 && r.diasN <= 29).length, ate: prev.itens.filter((r) => r.diasN >= 30).length };
+    dialogo('<h2 id="dlg-t">Relatório: itens com até 45 dias</h2>'
+      + '<p class="meta">Itens com O.S aberta e até 45 dias de estoque, posição de ' + (prev.base ? dataBR(new Date(prev.base)) : 'hoje') + '. Agora: <b style="color:var(--paper)" id="rel-n">' + prev.itens.length + ' itens</b> (<span id="rel-det">' + n.rup + ' em ruptura, ' + n.cri + ' críticos, ' + n.ate + ' em atenção</span>).</p>'
+      + '<label class="field" for="rel-prio">Códigos que já estão no relatório Prioridades O.S (ficam de fora)<textarea id="rel-prio" rows="3" placeholder="Ex.: 8914, 7771, 5709" style="padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px;resize:vertical">' + esc(cfg.prioridades) + '</textarea></label>'
+      + '<label class="check" for="rel-alemao"><input type="checkbox" id="rel-alemao"' + ((cfg.excluirClientes || []).includes('Bar do Alemão SP') ? ' checked' : '') + '><span>Tirar os itens do Bar do Alemão SP</span></label>'
+      + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="rel-ok">Baixar relatório em PDF</button></div>');
+    const ler = () => ({ prioridades: $('rel-prio').value, excluirClientes: $('rel-alemao').checked ? ['Bar do Alemão SP'] : [] });
+    const atualiza = () => { const r = relItens(ler()); const m = { rup: r.itens.filter((x) => x.diasN <= 0).length, cri: r.itens.filter((x) => x.diasN >= 1 && x.diasN <= 29).length, ate: r.itens.filter((x) => x.diasN >= 30).length }; $('rel-n').textContent = r.itens.length + ' itens'; $('rel-det').textContent = m.rup + ' em ruptura, ' + m.cri + ' críticos, ' + m.ate + ' em atenção'; };
+    $('rel-prio').addEventListener('input', atualiza); $('rel-alemao').addEventListener('change', atualiza);
+    $('rel-ok').addEventListener('click', async () => {
+      const c = ler(); const r = relItens(c);
+      if (!r.itens.length) { toast('Nenhum item entra no relatório com esses critérios.', true); return; }
+      if (!window.jspdf || !window.jspdf.jsPDF) { toast('O gerador de PDF não carregou. Recarregue a página e tente de novo.', true); return; }
+      const btn = $('rel-ok'); btn.disabled = true; btn.textContent = 'Gerando…';
+      try {
+        if (state.canEdit && state.db) { state.db.doc('estoque/config').set({ prioridades: c.prioridades, excluirClientes: c.excluirClientes }).catch(() => {}); }
+        const blob = gerarPDF(r, c);
+        const dl = await window.claude?.use?.('downloads');
+        if (!dl) throw { code: 'unavailable' };
+        const d = new Date(r.base || Date.now());
+        await dl.save({ filename: 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + '.pdf', data: blob });
+        fechar(); toast('Relatório baixado com ' + r.itens.length + ' itens.');
+      } catch (err) {
+        btn.disabled = false; btn.textContent = 'Baixar relatório em PDF';
+        if (err && err.code === 'declined') return;
+        toast(err && err.code === 'rate_limited' ? 'Já tem um download esperando sua confirmação.' : 'Não deu para baixar o PDF nesta visualização. Abra a página pelo claude.ai e tente de novo.', true);
+      }
+    });
+  });
+
+  // ---------- dados ----------
+  render();
+  (async () => {
+    const [db, user] = await Promise.all([window.claude?.use?.('db'), window.claude?.use?.('user')]);
+    try { state.canEdit = user ? await user.canEdit() : false; } catch (e) { state.canEdit = false; }
+    if (!db) { $('conn').textContent = 'Os dados não carregaram nesta visualização. Abra a página pelo link do claude.ai.'; render(); return; }
+    state.db = db;
+    $('conn').textContent = '';
+    let primeira = { jit: true, gen: true };
+    for (const t of ['jit', 'gen']) {
+      db.doc('estoque/' + t).onSnapshot((snap) => {
+        state.docs[t] = snap.exists ? snap.data() : null;
+        const anima = primeira[t] || !snap.metadata.hasPendingWrites;
+        primeira[t] = false;
+        rerender(state.tab === t ? anima : false);
+      }, () => { $('conn').textContent = 'A conexão com os dados caiu. Recarregue a página.'; });
+    }
+    db.doc('estoque/os').onSnapshot((snap) => { state.osInfo = snap.exists ? snap.data() : null; rerender(false); });
+    db.doc('estoque/config').onSnapshot((snap) => { state.relCfg = snap.exists ? snap.data() : null; });
+  })();
+})();
+</script>
+</body>
+</html>
