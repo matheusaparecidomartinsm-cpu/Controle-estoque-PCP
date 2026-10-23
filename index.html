@@ -175,6 +175,10 @@ dd{margin:0;text-align:right;font-weight:600}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"></path><path d="M14 3v4h4"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg>
           Gerar relatório de 45 dias
         </button>
+        <button class="btn quiet" id="semanal" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-6"></path></svg>
+          Relatório semanal
+        </button>
       </div>
       <label class="search" for="q">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--kraft)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
@@ -702,6 +706,236 @@ dd{margin:0;text-align:right;font-weight:600}
         toast(err && err.code === 'rate_limited' ? 'Já tem um download esperando sua confirmação.' : 'Não deu para gerar o PDF. Tente de novo.', true);
       }
     });
+  });
+
+  // ---------- relatório semanal (compara duas fotos do histórico) ----------
+  const isoDia = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const diaBR = (s) => dataBR(isoDia(s));
+  const pct = (a, b) => a > 0 ? (b - a) / a * 100 : (b > 0 ? null : 0);
+  const pctTxt = (v) => v === null ? '—' : (v > 0 ? '+' : '') + v.toFixed(0).replace('-0', '0') + '%';
+  const diasCap = (r) => r.semGiro ? null : Math.max(-999, Math.min(999, Math.round(r.cob)));
+  const SIT = [['falta', 'Em ruptura'], ['critico', 'Crítico'], ['atencao', 'Atenção'], ['ok', 'Em dia']];
+
+  function compararFotos(dA, dB) {
+    const mapa = (doc) => { const m = new Map(); (doc.itens || []).forEach((it, i) => { if (it[0] && !m.has(it[0])) m.set(it[0], computa(it, i, doc.atualizadoEm)); }); return m; };
+    const A = mapa(dA), B = mapa(dB);
+    const linhas = [];
+    B.forEach((b, cod) => {
+      const a = A.get(cod); if (!a) return;
+      if (a.semGiro && b.semGiro) return;
+      const da = diasCap(a), db = diasCap(b);
+      linhas.push({ cod, nome: b.nome, cli: b.cli, os: b.os, a, b, estA: a.estoque, estB: b.estoque, dispA: a.disp, dispB: b.disp,
+        diasA: da, diasB: db, dDias: (db ?? 0) - (da ?? 0), varEst: pct(a.estoque, b.estoque) });
+    });
+    const validos = linhas.filter((l) => !l.a.semGiro && !l.b.semGiro);
+    const conta = (lado) => { const c = { falta: 0, critico: 0, atencao: 0, ok: 0 }; validos.forEach((l) => { const r = l[lado]; const st = !r.semGiro && r.disp <= 0 ? 'falta' : r.st; if (c[st] !== undefined) c[st]++; }); return c; };
+    const sit = { a: conta('a'), b: conta('b') };
+    const ruptA = sit.a.falta, ruptB = sit.b.falta;
+    const sairam = linhas.filter((l) => !l.a.semGiro && !l.b.semGiro && l.dispA <= 0 && l.dispB > 0).sort((x, y) => y.dispB - x.dispB);
+    const entraram = linhas.filter((l) => !l.a.semGiro && !l.b.semGiro && l.dispA > 0 && l.dispB <= 0).sort((x, y) => x.dispB - y.dispB);
+    const melhoraram = validos.filter((l) => l.dDias > 0 && l.dispB > l.dispA).sort((x, y) => y.dDias - x.dDias);
+    const pioraram = validos.filter((l) => l.dDias < 0 && l.dispB < l.dispA).sort((x, y) => x.dDias - y.dDias);
+    const somaA = linhas.reduce((s, l) => s + l.estA, 0), somaB = linhas.reduce((s, l) => s + l.estB, 0);
+    return { linhas, validos: validos.length, foraGiro: linhas.length - validos.length, sit, ruptA, ruptB, sairam, entraram, melhoraram, pioraram, somaA, somaB };
+  }
+
+  function grafSituacao(pdf, x, y, w, h, sit, rotA, rotB, cores) {
+    const max = Math.max(1, ...SIT.map(([k]) => Math.max(sit.a[k], sit.b[k])));
+    const topo = Math.ceil(max / 10) * 10 || 10;
+    const baseY = y + h - 8, alt = h - 16, grupo = w / SIT.length, bw = Math.min(12, grupo / 3.2);
+    pdf.setDrawColor(225, 225, 225); pdf.setLineWidth(0.2);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(130, 130, 130);
+    for (let i = 0; i <= 4; i++) { const v = topo * i / 4, yy = baseY - alt * i / 4; pdf.line(x, yy, x + w, yy); pdf.text(String(Math.round(v)), x - 1.5, yy + 1, { align: 'right' }); }
+    SIT.forEach(([k, lab], i) => {
+      const cx = x + grupo * i + grupo / 2;
+      [[sit.a[k], [190, 190, 190]], [sit.b[k], cores[k]]].forEach(([v, cor], j) => {
+        const hh = alt * v / topo, bx = cx - bw - 0.8 + j * (bw + 1.6);
+        pdf.setFillColor(...cor); pdf.rect(bx, baseY - hh, bw, hh, 'F');
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(60, 60, 60);
+        pdf.text(String(v), bx + bw / 2, baseY - hh - 1.3, { align: 'center' });
+      });
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(60, 60, 60);
+      pdf.text(lab, cx, baseY + 4.5, { align: 'center' });
+    });
+    pdf.setFillColor(190, 190, 190); pdf.rect(x + w - 62, y, 3, 3, 'F'); pdf.setFontSize(7); pdf.setTextColor(90, 90, 90); pdf.text(rotA, x + w - 58, y + 2.6);
+    pdf.setFillColor(60, 60, 60); pdf.rect(x + w - 30, y, 3, 3, 'F'); pdf.text(rotB, x + w - 26, y + 2.6);
+  }
+
+  function grafMelhoras(pdf, x, y, w, lista, cor) {
+    const top = lista.slice(0, 8); if (!top.length) return y;
+    const max = Math.max(1, ...top.map((l) => l.dDias));
+    const rotW = 70, bh = 4.2, gap = 2.6;
+    top.forEach((l, i) => {
+      const yy = y + i * (bh + gap);
+      const nome = pdf.splitTextToSize(l.cod + ' ' + l.nome, rotW - 2)[0];
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.8); pdf.setTextColor(60, 60, 60);
+      pdf.text(nome, x, yy + bh - 1);
+      const bw = (w - rotW - 16) * l.dDias / max;
+      pdf.setFillColor(...cor); pdf.rect(x + rotW, yy, Math.max(0.8, bw), bh, 'F');
+      pdf.setFont('helvetica', 'bold'); pdf.text('+' + l.dDias + ' d', x + rotW + bw + 1.5, yy + bh - 1);
+    });
+    return y + top.length * (bh + gap);
+  }
+
+  function gerarSemanalPDF(cmp, fotoA, fotoB, nomeAba) {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, M = 14;
+    const VERM = [200, 30, 45], LAR = [226, 112, 20], OURO = [184, 134, 11], VERDE = [30, 130, 80], CINZA = [110, 110, 110], TINTA = [20, 20, 20];
+    const cores = { falta: VERM, critico: LAR, atencao: OURO, ok: VERDE };
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(...VERM);
+    pdf.text('PROFOOD EMBALAGENS · PCP', M, 16);
+    pdf.setFontSize(19); pdf.setTextColor(...TINTA);
+    pdf.text('Relatório semanal de estoque', M, 24);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...CINZA);
+    pdf.text('O que mudou nos ' + nomeAba + ' entre ' + diaBR(fotoA) + ' e ' + diaBR(fotoB), M, 29.5);
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...TINTA);
+    pdf.text(diaBR(fotoA) + ' a ' + diaBR(fotoB), W - M, 23, { align: 'right' });
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(...CINZA);
+    pdf.text('emitido em ' + dataBR(new Date()), W - M, 27.5, { align: 'right' });
+    const vEst = pct(cmp.somaA, cmp.somaB);
+    const cards = [
+      ['EM RUPTURA', cmp.ruptA + ' » ' + cmp.ruptB, cmp.ruptB <= cmp.ruptA ? VERDE : VERM, (cmp.ruptB - cmp.ruptA > 0 ? '+' : '') + (cmp.ruptB - cmp.ruptA) + ' itens'],
+      ['SAÍRAM DA RUPTURA', String(cmp.sairam.length), VERDE, cmp.entraram.length + ' entraram'],
+      ['MELHORARAM', String(cmp.melhoraram.length), VERDE, cmp.pioraram.length + ' pioraram'],
+      ['ESTOQUE TOTAL (CX)', fmt(cmp.somaB), vEst !== null && vEst < 0 ? VERM : VERDE, pctTxt(vEst) + ' vs ' + fmt(cmp.somaA)]
+    ];
+    const gap = 3.5, cw = (W - 2 * M - 3 * gap) / 4, cy = 35, ch = 21;
+    cards.forEach(([lab, val, cor, sub], k) => {
+      const x = M + k * (cw + gap);
+      pdf.setDrawColor(222, 222, 222); pdf.setLineWidth(0.25); pdf.roundedRect(x, cy, cw, ch, 1.2, 1.2, 'S');
+      pdf.setFillColor(...cor); pdf.rect(x, cy, 1.1, ch, 'F');
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(...CINZA); pdf.text(lab, x + 4, cy + 5.5);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(...cor); pdf.text(val, x + 4, cy + 13.5);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA); pdf.text(sub, x + 4, cy + 18.3);
+    });
+    let y = cy + ch + 9;
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...TINTA); pdf.text('Produtos por situação', M, y);
+    grafSituacao(pdf, M + 8, y + 3, W - 2 * M - 8, 58, cmp.sit, diaBR(fotoA), diaBR(fotoB), cores);
+    y += 68;
+    if (cmp.melhoraram.length) {
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...TINTA); pdf.text('Maiores ganhos em dias de estoque', M, y);
+      y = grafMelhoras(pdf, M, y + 4, W - 2 * M, cmp.melhoraram, VERDE) + 6;
+    }
+    const tabela = (titulo, nota, linhas, cols, corCol) => {
+      if (y > 250) { pdf.addPage(); y = 20; }
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(...TINTA); pdf.text(titulo, M, y);
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA); pdf.text(nota, M, y + 4);
+      if (!linhas.length) { pdf.setFontSize(8); pdf.text('Nenhum produto nesta situação no período.', M, y + 10); y += 18; return; }
+      pdf.autoTable({
+        startY: y + 6, margin: { left: M, right: M, top: 16, bottom: 16 },
+        head: [cols.map((c) => c[0])], body: linhas.map((l) => cols.map((c) => c[1](l))),
+        theme: 'plain',
+        styles: { font: 'helvetica', fontSize: 7.4, textColor: TINTA, cellPadding: { top: 1.9, bottom: 1.9, left: 1.5, right: 1.5 }, lineColor: [228, 228, 228], valign: 'middle' },
+        headStyles: { fontStyle: 'bold', fontSize: 6.3, textColor: CINZA, valign: 'bottom', lineWidth: { bottom: 0.4 }, lineColor: [60, 60, 60] },
+        bodyStyles: { lineWidth: { bottom: 0.15 } },
+        columnStyles: Object.fromEntries(cols.map((c, i) => [i, i === 0 ? { cellWidth: 'auto' } : { halign: 'right', cellWidth: c[2] || 18 }])),
+        didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; if (d.section === 'body' && corCol && corCol[d.column.index]) { d.cell.styles.textColor = corCol[d.column.index](linhas[d.row.index]); d.cell.styles.fontStyle = 'bold'; } },
+        showHead: 'everyPage'
+      });
+      y = pdf.lastAutoTable.finalY + 9;
+    };
+    const item = ['ITEM', (l) => l.cod + ' ' + l.nome];
+    const dCor = (v) => v === null ? CINZA : v <= 0 ? VERM : v < 30 ? LAR : v <= 45 ? OURO : VERDE;
+    const dTxt = (v) => v === null ? 'Sem giro' : String(v);
+    tabela('Saíram da ruptura', 'Tinham disponível zerado ou negativo em ' + diaBR(fotoA) + ' e agora têm saldo.', cmp.sairam,
+      [item, ['DISP.\nANTES', (l) => fmt(l.dispA)], ['DISP.\nAGORA', (l) => fmt(l.dispB)], ['DIAS\nAGORA', (l) => dTxt(l.diasB)], ['O.S', (l) => l.os || '—']],
+      { 2: () => VERDE, 3: (l) => dCor(l.diasB) });
+    tabela('Produtos que mais melhoraram', 'Maior ganho em dias de estoque. Variação do estoque em caixas entre as duas datas.', cmp.melhoraram.slice(0, 20),
+      [item, ['ESTOQUE\nANTES', (l) => fmt(l.estA)], ['ESTOQUE\nAGORA', (l) => fmt(l.estB)], ['VARIAÇÃO', (l) => pctTxt(l.varEst)], ['DIAS\nANTES', (l) => dTxt(l.diasA)], ['DIAS\nAGORA', (l) => dTxt(l.diasB)]],
+      { 3: (l) => l.varEst > 0 ? VERDE : CINZA, 5: (l) => dCor(l.diasB) });
+    tabela('Entraram em ruptura', 'Tinham saldo em ' + diaBR(fotoA) + ' e agora estão com disponível zerado ou negativo.', cmp.entraram,
+      [item, ['DISP.\nANTES', (l) => fmt(l.dispA)], ['DISP.\nAGORA', (l) => fmt(l.dispB)], ['O.S', (l) => l.os || '—']],
+      { 2: () => VERM });
+    tabela('Produtos que mais pioraram', 'Maior perda em dias de estoque.', cmp.pioraram.slice(0, 15),
+      [item, ['ESTOQUE\nANTES', (l) => fmt(l.estA)], ['ESTOQUE\nAGORA', (l) => fmt(l.estB)], ['VARIAÇÃO', (l) => pctTxt(l.varEst)], ['DIAS\nANTES', (l) => dTxt(l.diasA)], ['DIAS\nAGORA', (l) => dTxt(l.diasB)]],
+      { 3: (l) => l.varEst < 0 ? VERM : CINZA, 5: (l) => dCor(l.diasB) });
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA);
+    const nota = pdf.splitTextToSize('Compara as fotos do estoque salvas pelo site em ' + diaBR(fotoA) + ' e ' + diaBR(fotoB) + ', só com produtos que estão nas duas. Dias de estoque = disponível (estoque − empenhado) ÷ média mensal × 30. Itens "Sem giro" / "Sem média" em alguma das datas ficam fora das contagens e comparações (' + cmp.foraGiro + ' produtos neste período).', W - 2 * M);
+    if (y + nota.length * 3.5 > 297 - 16) { pdf.addPage(); y = 20; }
+    pdf.text(nota, M, y);
+    const total = pdf.getNumberOfPages();
+    for (let p = 1; p <= total; p++) { pdf.setPage(p); pdf.setFontSize(7); pdf.setTextColor(...CINZA); pdf.text('Página ' + p + ' de ' + total, W - M, 297 - 8, { align: 'right' }); }
+    return pdf.output('blob');
+  }
+
+  function gerarSemanalXLSX(cmp, fotoA, fotoB, nomeAba) {
+    const wb = XLSX.utils.book_new();
+    const A = diaBR(fotoA), B = diaBR(fotoB);
+    const add = (nome, linhas) => { const ws = XLSX.utils.aoa_to_sheet(linhas); ws['!cols'] = linhas[0].map((_, i) => ({ wch: i === 1 ? 58 : 14 })); XLSX.utils.book_append_sheet(wb, ws, nome); };
+    const dv = (v) => v === null ? 'Sem giro' : v;
+    add('Resumo', [['Relatório semanal de estoque', ''], ['Produtos', nomeAba], ['Período', A + ' a ' + B], [], ['Indicador', A, B],
+      ...SIT.map(([k, l]) => [l, cmp.sit.a[k], cmp.sit.b[k]]), ['Estoque total (caixas)', cmp.somaA, cmp.somaB], [],
+      ['Saíram da ruptura', cmp.sairam.length], ['Entraram em ruptura', cmp.entraram.length], ['Melhoraram', cmp.melhoraram.length], ['Pioraram', cmp.pioraram.length]]);
+    const cab = ['Código', 'Descrição', 'Cliente', 'Estoque ' + A, 'Estoque ' + B, 'Variação estoque', 'Disponível ' + A, 'Disponível ' + B, 'Dias ' + A, 'Dias ' + B, 'Ganho em dias', 'OS'];
+    const lin = (l) => [l.cod, l.nome, l.cli, l.estA, l.estB, l.varEst === null ? '' : l.varEst / 100, l.dispA, l.dispB, dv(l.diasA), dv(l.diasB), l.dDias, l.os || ''];
+    add('Melhoraram', [cab, ...cmp.melhoraram.map(lin)]);
+    add('Saíram da ruptura', [cab, ...cmp.sairam.map(lin)]);
+    add('Pioraram', [cab, ...cmp.pioraram.map(lin)]);
+    add('Entraram em ruptura', [cab, ...cmp.entraram.map(lin)]);
+    add('Comparativo completo', [cab, ...cmp.linhas.slice().sort((x, y) => (x.b.cob) - (y.b.cob)).map(lin)]);
+    ['Melhoraram', 'Saíram da ruptura', 'Pioraram', 'Entraram em ruptura', 'Comparativo completo'].forEach((n) => {
+      const ws = wb.Sheets[n]; const r = XLSX.utils.decode_range(ws['!ref']);
+      for (let i = 1; i <= r.e.r; i++) { const c = ws[XLSX.utils.encode_cell({ r: i, c: 5 })]; if (c && c.t === 'n') c.z = '0%'; }
+    });
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  function baixar(blob, nome) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
+  $('semanal').addEventListener('click', async () => {
+    const aba = state.tab; const nomeAba = aba === 'jit' ? 'produtos JIT' : 'genéricos';
+    const { data: dias, error } = await sb.from('estoque_pcp_historico').select('dia').eq('tab', aba).order('dia', { ascending: false });
+    if (error) { toast('Não deu para ler o histórico. Confira a conexão e tente de novo.', true); return; }
+    const lista = (dias || []).map((d) => d.dia);
+    if (lista.length < 2) {
+      dialogo('<h2 id="dlg-t">Relatório semanal</h2><p class="meta">O relatório compara duas fotos do estoque dos ' + nomeAba + '. ' + (lista.length ? 'Por enquanto só existe a de ' + diaBR(lista[0]) + '.' : 'Ainda não há nenhuma foto salva.') + ' O site guarda uma foto a cada importação da planilha de estoque; depois da próxima importação o relatório já fica disponível.</p><div class="row-end"><button class="btn solid" type="button" data-cancel>Entendi</button></div>');
+      return;
+    }
+    const fim = lista[0];
+    const alvo = new Date(isoDia(fim)); alvo.setDate(alvo.getDate() - 7);
+    const ini = lista.find((d) => isoDia(d) <= alvo) || lista[lista.length - 1];
+    const opts = (sel) => lista.map((d) => '<option value="' + d + '"' + (d === sel ? ' selected' : '') + '>' + diaBR(d) + '</option>').join('');
+    dialogo('<h2 id="dlg-t">Relatório semanal: ' + nomeAba + '</h2>'
+      + '<p class="meta">Compara duas fotos do estoque: o que melhorou, o que piorou e quais produtos saíram ou entraram em ruptura.</p>'
+      + '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><label class="field" for="sem-a">De<select id="sem-a" style="min-height:46px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px">' + opts(ini) + '</select></label>'
+      + '<label class="field" for="sem-b">Até<select id="sem-b" style="min-height:46px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px">' + opts(fim) + '</select></label></div>'
+      + '<div id="sem-prev" class="meta" aria-live="polite">Carregando…</div>'
+      + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn" type="button" id="sem-xlsx" disabled>Baixar planilha Excel</button><button class="btn solid" type="button" id="sem-pdf" disabled>Baixar relatório em PDF</button></div>');
+    const cache = {};
+    const foto = async (d) => { if (cache[d]) return cache[d]; const { data, error: e } = await sb.from('estoque_pcp_historico').select('data').eq('tab', aba).eq('dia', d).single(); if (e) throw e; return (cache[d] = data.data); };
+    let atual = null;
+    const prever = async () => {
+      const a = $('sem-a').value, b = $('sem-b').value;
+      $('sem-pdf').disabled = $('sem-xlsx').disabled = true;
+      if (a >= b) { $('sem-prev').innerHTML = '<span style="color:var(--falta)">Escolha uma data “De” anterior à data “Até”.</span>'; atual = null; return; }
+      $('sem-prev').textContent = 'Carregando…';
+      try {
+        const [fa, fb] = await Promise.all([foto(a), foto(b)]);
+        const cmp = compararFotos(fa, fb); atual = { cmp, a, b };
+        $('sem-prev').innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;color:var(--paper)">'
+          + [['Em ruptura', cmp.ruptA + ' → ' + cmp.ruptB], ['Saíram da ruptura', cmp.sairam.length], ['Entraram em ruptura', cmp.entraram.length], ['Melhoraram', cmp.melhoraram.length], ['Pioraram', cmp.pioraram.length], ['Estoque total', pctTxt(pct(cmp.somaA, cmp.somaB))]]
+            .map(([k, v]) => '<div style="padding:10px 12px;border:1px solid var(--line);border-radius:10px"><div class="meta" style="font-size:13px">' + k + '</div><b style="font-size:20px">' + v + '</b></div>').join('')
+          + '</div>' + (cmp.melhoraram[0] ? '<p class="meta" style="margin-top:10px">Maior melhora: ' + esc(cmp.melhoraram[0].cod + ' ' + cmp.melhoraram[0].nome) + ' (+' + cmp.melhoraram[0].dDias + ' dias, estoque ' + pctTxt(cmp.melhoraram[0].varEst) + ').</p>' : '');
+        $('sem-pdf').disabled = $('sem-xlsx').disabled = false;
+      } catch (e) { $('sem-prev').innerHTML = '<span style="color:var(--falta)">Não deu para carregar as fotos. Tente de novo.</span>'; }
+    };
+    $('sem-a').addEventListener('change', prever); $('sem-b').addEventListener('change', prever);
+    const nomeBase = () => 'Relatorio semanal ' + (aba === 'jit' ? 'JIT' : 'Genericos') + ' ' + diaBR(atual.a).replace(/\//g, '-') + ' a ' + diaBR(atual.b).replace(/\//g, '-');
+    $('sem-pdf').addEventListener('click', () => {
+      if (!atual) return;
+      if (!window.jspdf || !window.jspdf.jsPDF) { toast('O gerador de PDF não carregou. Recarregue a página e tente de novo.', true); return; }
+      try { baixar(gerarSemanalPDF(atual.cmp, atual.a, atual.b, nomeAba), nomeBase() + '.pdf'); toast('Relatório semanal baixado.'); } catch (e) { toast('Não deu para gerar o PDF. Tente de novo.', true); }
+    });
+    $('sem-xlsx').addEventListener('click', () => {
+      if (!atual) return;
+      try { baixar(gerarSemanalXLSX(atual.cmp, atual.a, atual.b, nomeAba), nomeBase() + '.xlsx'); toast('Planilha do relatório semanal baixada.'); } catch (e) { toast('Não deu para gerar a planilha. Tente de novo.', true); }
+    });
+    prever();
   });
 
   // ---------- dados (Supabase) ----------

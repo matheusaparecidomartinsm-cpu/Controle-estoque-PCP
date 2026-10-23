@@ -9,6 +9,7 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 - **Importar planilha de estoque**: lê um arquivo .xlsx, .xls ou .csv e atualiza, pelo código, os produtos que já estão no site (JIT e genéricos). Produtos da planilha que não estão no site ficam de fora, a não ser que se marque a opção de adicioná-los. O formato do dia a dia é a exportação do sistema (aba "Export"): Produto ("código - descrição"), Estoque, Venda Empenhada, Média Mensal, Entrega Pendente e Dias Estoque Atual ("Estoque Incalculavel" vira "Sem média"). A planilha de monitoramento antiga (Cód Novo, Descrição produto, Quantidade por caixa, OS, Última Movimentação, Previsão, Observação) também é aceita. Campos que a planilha não traz, como OS e previsão, ficam como estavam.
 - **Importar planilha de OS**: liga cada OS ao produto pelo código e atualiza OS, última movimentação e previsão.
 - **Gerar relatório de 45 dias**: monta o PDF A4 "Itens com até 45 dias de estoque", com os itens que têm OS aberta, tirando os códigos do relatório Prioridades O.S e o Bar do Alemão SP.
+- **Relatório semanal**: compara duas fotos do estoque (por padrão, a mais recente com a de uma semana antes) e mostra o que mudou: produtos que saíram e entraram em ruptura, os que mais melhoraram e pioraram em dias de estoque, a variação do estoque em %, um gráfico de produtos por situação e outro com os maiores ganhos. Baixa em PDF A4 e em Excel.
 - Registra entrada e saída de caixas no painel de cada produto.
 
 ## Onde ele roda
@@ -18,6 +19,7 @@ O site é estático (`index.html`) e está publicado na Vercel, ligado a este re
 Os dados ficam no Supabase:
 
 - Tabela `estoque_pcp`: uma linha para cada lista (`jit`, `gen`), mais `os` (última importação de OS) e `config` (códigos do Prioridades O.S do relatório). O campo `data` guarda a lista em JSON.
+- Tabela `estoque_pcp_historico`: uma foto por aba e por dia, gravada automaticamente (gatilho no banco) sempre que a lista de estoque muda. É de onde sai o relatório semanal.
 - Tabela `estoque_pcp_permitidos`: e-mails que podem ver e alterar o estoque. As regras de acesso (RLS) bloqueiam qualquer outro usuário.
 - Login com e-mail e senha do Supabase Auth. Quem digita só o usuário (ex.: `matheuspcp`) entra como `matheuspcp@profood.local`.
 - A chave usada no site é a publicável do Supabase, feita para ficar no navegador; o que protege os dados são as regras de acesso.
