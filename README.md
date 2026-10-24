@@ -4,6 +4,8 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 
 ## O que o site faz
 
+- **Ações de hoje** (aba que abre primeiro): três listas do que precisa ser feito. *Precisa abrir OS*: itens sem OS que, contando a entrega pendente, acabam antes do prazo de produção mais a margem de segurança, com a quantidade sugerida em caixas (consumo do período menos disponível e entrega pendente). *OS atrasadas*: OS com a previsão vencida. *OS sem previsão*: itens com OS aberta, sem data, que acabam antes do prazo. O prazo (padrão 60 dias) e a margem (padrão 15 dias) ficam na própria tela; dá para usar o LeadTime da planilha item por item. Baixa as listas em Excel.
+
 - Mostra cada produto em uma linha, como na planilha de monitoramento: descrição, média mensal, quantidade por caixa, estoque, empenhado, disponível, dias, ruptura, OS, última movimentação, previsão e observação.
 - Calcula o disponível (estoque − empenhado), os dias de estoque (disponível ÷ média mensal × 30), os dias contando a entrega pendente e a data de ruptura a partir da data da importação.
 - **Importar estoque**: lê um arquivo .xlsx, .xls ou .csv e atualiza, pelo código, os produtos que já estão no site (JIT e genéricos). Produtos da planilha que não estão no site ficam de fora, a não ser que se marque a opção de adicioná-los. O formato do dia a dia é a exportação do sistema (aba "Export"): Produto ("código - descrição"), Estoque, Venda Empenhada, Média Mensal, Entrega Pendente e Dias Estoque Atual ("Estoque Incalculavel" vira "Sem média"). A planilha de monitoramento antiga (Cód Novo, Descrição produto, Quantidade por caixa, OS, Última Movimentação, Previsão, Observação) também é aceita. Campos que a planilha não traz, como OS e previsão, ficam como estavam.
