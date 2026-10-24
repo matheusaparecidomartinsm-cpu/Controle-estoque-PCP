@@ -859,22 +859,33 @@ td.sug{font-weight:700;color:var(--paper)}
     });
     const corDias = (d) => d <= 0 ? VERM : d < 30 ? LAR : OURO;
     const hoje0 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    // Um bloco por franquia (ordem alfabética, "Outros" no fim); dentro dele, do menor para o maior dias.
+    const grupos = new Map();
+    res.itens.forEach((r) => { const k = r.cli || 'Outros'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); });
+    const nomesG = [...grupos.keys()].sort((a, b) => a === 'Outros' ? 1 : b === 'Outros' ? -1 : a.localeCompare(b, 'pt-BR'));
+    const corpo = []; const meta = [];
+    nomesG.forEach((k) => {
+      const g = grupos.get(k); const rup = g.filter((r) => r.diasN <= 0).length;
+      corpo.push([{ content: k.toUpperCase() + '   ' + g.length + (g.length > 1 ? ' itens' : ' item') + (rup ? ' · ' + rup + ' em ruptura' : ''), colSpan: 7, styles: { fontStyle: 'bold', fontSize: 7.4, fillColor: [242, 242, 242], textColor: TINTA, cellPadding: { top: 2.4, bottom: 2.4, left: 1.5, right: 1.5 } } }]);
+      meta.push(null);
+      g.forEach((r) => { corpo.push([r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os, r.prev || '—']); meta.push(r); });
+    });
     pdf.autoTable({
       startY: cy + ch + 7,
       margin: { left: M, right: M, top: 16, bottom: 16 },
       head: [['ITEM', 'ESTOQUE', 'EMPENHADO', 'MÉDIA\nMENSAL', 'DIAS EM\nESTOQUE', 'O.S', 'PRAZO']],
-      body: res.itens.map((r) => [r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os, r.prev || '—']),
+      body: corpo,
       theme: 'plain',
       styles: { font: 'helvetica', fontSize: 7.6, textColor: TINTA, cellPadding: { top: 2.1, bottom: 2.1, left: 1.5, right: 1.5 }, lineColor: [228, 228, 228], valign: 'middle' },
       headStyles: { fontStyle: 'bold', fontSize: 6.5, textColor: CINZA, valign: 'bottom', lineWidth: { bottom: 0.4 }, lineColor: [60, 60, 60] },
       bodyStyles: { lineWidth: { bottom: 0.15 } },
       columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 21 }, 3: { halign: 'right', cellWidth: 17 }, 4: { halign: 'right', cellWidth: 19, fontStyle: 'bold' }, 5: { halign: 'right', cellWidth: 16 }, 6: { halign: 'right', cellWidth: 16 } },
-      didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; if (d.section === 'body' && d.column.index === 4) d.cell.styles.textColor = corDias(res.itens[d.row.index].diasN); if (d.section === 'body' && d.column.index === 6) { const pv = lerPrev(res.itens[d.row.index].prev, hoje0); if (pv && pv < hoje0) { d.cell.styles.textColor = VERM; d.cell.styles.fontStyle = 'bold'; } } },
+      didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; const rr = d.section === 'body' ? meta[d.row.index] : null; if (!rr) return; if (d.column.index === 4) d.cell.styles.textColor = corDias(rr.diasN); if (d.column.index === 6) { const pv = lerPrev(rr.prev, hoje0); if (pv && pv < hoje0) { d.cell.styles.textColor = VERM; d.cell.styles.fontStyle = 'bold'; } } },
       showHead: 'everyPage'
     });
     let y = pdf.lastAutoTable.finalY + 6;
     const exc = (cfg.excluirClientes || []).length ? ' Sem os itens do ' + cfg.excluirClientes.join(', ') + ' e' : '';
-    const nota = 'Ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. Prazo em vermelho = previsão da O.S já vencida. Somente itens com O.S aberta' + (res.tirPrio ? ', fora os ' + res.tirPrio + ' itens do relatório Prioridades O.S' : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
+    const nota = 'Separado por franquia (ordem alfabética); dentro de cada uma, ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. Prazo em vermelho = previsão da O.S já vencida. Somente itens com O.S aberta' + (res.tirPrio ? ', fora os ' + res.tirPrio + ' itens do relatório Prioridades O.S' : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA);
     const linhas = pdf.splitTextToSize(nota, W - 2 * M);
     if (y + linhas.length * 3.5 > 297 - 16) { pdf.addPage(); y = 20; }
