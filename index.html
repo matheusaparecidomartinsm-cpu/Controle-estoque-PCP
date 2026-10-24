@@ -865,12 +865,14 @@ td.sug{font-weight:700;color:var(--paper)}
     // Um bloco por franquia (ordem alfabética, "Outros" no fim); dentro dele, do menor para o maior dias.
     const comPrazo = res.itens.some((r) => String(r.prev || '').trim());
     const grupos = new Map();
-    res.itens.forEach((r) => { const k = r.cli || 'Outros'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); });
-    const nomesG = [...grupos.keys()].sort((a, b) => a === 'Outros' ? 1 : b === 'Outros' ? -1 : a.localeCompare(b, 'pt-BR'));
+    // As Prioridades O.S vêm primeiro, num bloco próprio, do menor para o maior dias de estoque.
+    const PRIO = 'Prioridades O.S';
+    res.itens.forEach((r) => { const k = r.prio ? PRIO : (r.cli || 'Outros'); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); });
+    const nomesG = [...grupos.keys()].sort((a, b) => a === PRIO ? -1 : b === PRIO ? 1 : a === 'Outros' ? 1 : b === 'Outros' ? -1 : a.localeCompare(b, 'pt-BR'));
     const corpo = []; const meta = [];
     nomesG.forEach((k) => {
       const g = grupos.get(k); const rup = g.filter((r) => r.diasN <= 0).length; const np = g.filter((r) => r.prio).length;
-      corpo.push([{ content: k.toUpperCase() + '   ' + g.length + (g.length > 1 ? ' itens' : ' item') + (rup ? ' · ' + rup + ' em ruptura' : '') + (np ? ' · ' + np + (np > 1 ? ' prioridades' : ' prioridade') : ''), colSpan: comPrazo ? 7 : 6, styles: { fontStyle: 'bold', fontSize: 7.4, fillColor: [242, 242, 242], textColor: TINTA, cellPadding: { top: 2.4, bottom: 2.4, left: 1.5, right: 1.5 } } }]);
+      corpo.push([{ content: k.toUpperCase() + '   ' + g.length + (g.length > 1 ? ' itens' : ' item') + (rup ? ' · ' + rup + ' em ruptura' : '') + (np && k !== PRIO ? ' · ' + np + (np > 1 ? ' prioridades' : ' prioridade') : ''), colSpan: comPrazo ? 7 : 6, styles: { fontStyle: 'bold', fontSize: 7.4, fillColor: [242, 242, 242], textColor: TINTA, cellPadding: { top: 2.4, bottom: 2.4, left: 1.5, right: 1.5 } } }]);
       meta.push(null);
       g.forEach((r) => { corpo.push([r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os].concat(comPrazo ? [r.prev || '—'] : [])); meta.push(r); });
     });
@@ -885,11 +887,11 @@ td.sug{font-weight:700;color:var(--paper)}
       bodyStyles: { lineWidth: { bottom: 0.15 } },
       columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 21 }, 3: { halign: 'right', cellWidth: 17 }, 4: { halign: 'right', cellWidth: 19, fontStyle: 'bold' }, 5: { halign: 'right', cellWidth: 16 }, 6: { halign: 'right', cellWidth: 16 } },
       didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; const rr = d.section === 'body' ? meta[d.row.index] : null; if (!rr) return; if (rr.prio) { d.cell.styles.fillColor = [253, 232, 233]; if (d.column.index === 0) { d.cell.styles.textColor = VERM; d.cell.styles.fontStyle = 'bold'; } } if (d.column.index === 4) d.cell.styles.textColor = corDias(rr.diasN); if (d.column.index === 6) { const pv = lerPrev(rr.prev, hoje0); if (pv && pv < hoje0) { d.cell.styles.textColor = VERM; d.cell.styles.fontStyle = 'bold'; } } },
-      showHead: 'everyPage'
+      showHead: 'everyPage', rowPageBreak: 'avoid'
     });
     let y = pdf.lastAutoTable.finalY + 6;
     const exc = (cfg.excluirClientes || []).length ? ' Sem os itens do ' + cfg.excluirClientes.join(', ') + ' e' : '';
-    const nota = 'Separado por franquia (ordem alfabética); dentro de cada uma, ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. ' + (comPrazo ? 'Prazo em vermelho = previsão da O.S já vencida. ' : '') + 'Somente itens com O.S aberta' + (res.tirPrio ? '. Linhas em vermelho = Prioridades O.S (' + res.tirPrio + ' itens)' : '') + (res.tirPrev ? '. Fora os ' + res.tirPrev + ' itens que já têm data de entrega' + (res.tirPrio ? ' (as prioridades entram mesmo com data)' : '') : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
+    const nota = (res.tirPrio ? 'Prioridades O.S primeiro, em vermelho, do menor para o maior dias em estoque; depois os demais itens ' : '') + (res.tirPrio ? 'separados' : 'Separado') + ' por franquia (ordem alfabética); dentro de cada uma, ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. ' + (comPrazo ? 'Prazo em vermelho = previsão da O.S já vencida. ' : '') + 'Somente itens com O.S aberta' + (res.tirPrio ? '' : '') + (res.tirPrev ? '. Fora os ' + res.tirPrev + ' itens que já têm data de entrega' + (res.tirPrio ? ' (as prioridades entram mesmo com data)' : '') : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA);
     const linhas = pdf.splitTextToSize(nota, W - 2 * M);
     if (y + linhas.length * 3.5 > 297 - 16) { pdf.addPage(); y = 20; }
