@@ -582,8 +582,10 @@ td.sug{font-weight:700;color:var(--paper)}
     return out.join(' / ').replace(/\s+/g, ' ').trim();
   }
   const obsResumida = (obs) => String(obs || '').split(/\r?\n/).map((l) => l.trim().replace(/^-\s*/, '')).filter(Boolean).join(' / ').replace(/\s+/g, ' ');
+  // Nome da máquina no sistema → setor, como o PCP chama.
+  const SETOR_MAQUINA = { comercial01: 'Corte e vinco' };
   function etapaOS(o) {
-    if (o.etapa) { const e = o.etapa.trim(); return e[0].toUpperCase() + e.slice(1).toLowerCase(); }
+    if (o.etapa) { const e = o.etapa.trim(); return SETOR_MAQUINA[norm(e)] || e[0].toUpperCase() + e.slice(1).toLowerCase(); }
     return o.prod > 0 ? 'Concluída' : 'Não iniciada';
   }
   const osConcluida = (o) => !o.etapa && o.prod > 0;
