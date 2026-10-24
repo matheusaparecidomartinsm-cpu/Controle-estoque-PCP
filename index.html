@@ -797,7 +797,7 @@ td.sug{font-weight:700;color:var(--paper)}
   });
 
   // ---------- relatório "Itens até 45 dias" ----------
-  const REL_PADRAO = { prioridades: '', excluirClientes: ['Bar do Alemão SP'] };
+  const REL_PADRAO = { prioridades: '', excluirClientes: ['Bar do Alemão SP'], semPrevisao: true };
   function relConfig() { return Object.assign({}, REL_PADRAO, state.relCfg || {}); }
   // A busca da tela vale para os relatórios: com algo digitado, só entram os itens que casam com ela.
   const buscaTxt = () => String(state.q || '').trim();
@@ -807,7 +807,7 @@ td.sug{font-weight:700;color:var(--paper)}
   function relItens(cfg) {
     const prio = new Set(String(cfg.prioridades || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean));
     const fora = new Set(cfg.excluirClientes || []);
-    const out = []; let base = null; let tirPrio = 0;
+    const out = []; let base = null; let tirPrio = 0; let tirPrev = 0;
     for (const t of ['jit', 'gen']) {
       const doc = state.docs[t]; if (!doc) continue;
       if (doc.atualizadoEm && (!base || doc.atualizadoEm > base)) base = doc.atualizadoEm;
@@ -819,11 +819,12 @@ td.sug{font-weight:700;color:var(--paper)}
         if (fora.has(r.cli)) return;
         if (!casaBusca(r)) return;
         if (prio.has(String(r.cod))) { tirPrio++; return; }
+        if (cfg.semPrevisao && String(r.prev || '').trim()) { tirPrev++; return; }
         out.push(Object.assign({}, r, { diasN: dias }));
       });
     }
     out.sort((a, b) => a.cob - b.cob);
-    return { itens: out, base, tirPrio, prioQtd: prio.size, filtro: buscaTxt() };
+    return { itens: out, base, tirPrio, tirPrev, prioQtd: prio.size, filtro: buscaTxt() };
   }
   function dataBR(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
 
@@ -860,20 +861,21 @@ td.sug{font-weight:700;color:var(--paper)}
     const corDias = (d) => d <= 0 ? VERM : d < 30 ? LAR : OURO;
     const hoje0 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     // Um bloco por franquia (ordem alfabética, "Outros" no fim); dentro dele, do menor para o maior dias.
+    const comPrazo = !cfg.semPrevisao;
     const grupos = new Map();
     res.itens.forEach((r) => { const k = r.cli || 'Outros'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); });
     const nomesG = [...grupos.keys()].sort((a, b) => a === 'Outros' ? 1 : b === 'Outros' ? -1 : a.localeCompare(b, 'pt-BR'));
     const corpo = []; const meta = [];
     nomesG.forEach((k) => {
       const g = grupos.get(k); const rup = g.filter((r) => r.diasN <= 0).length;
-      corpo.push([{ content: k.toUpperCase() + '   ' + g.length + (g.length > 1 ? ' itens' : ' item') + (rup ? ' · ' + rup + ' em ruptura' : ''), colSpan: 7, styles: { fontStyle: 'bold', fontSize: 7.4, fillColor: [242, 242, 242], textColor: TINTA, cellPadding: { top: 2.4, bottom: 2.4, left: 1.5, right: 1.5 } } }]);
+      corpo.push([{ content: k.toUpperCase() + '   ' + g.length + (g.length > 1 ? ' itens' : ' item') + (rup ? ' · ' + rup + ' em ruptura' : ''), colSpan: comPrazo ? 7 : 6, styles: { fontStyle: 'bold', fontSize: 7.4, fillColor: [242, 242, 242], textColor: TINTA, cellPadding: { top: 2.4, bottom: 2.4, left: 1.5, right: 1.5 } } }]);
       meta.push(null);
-      g.forEach((r) => { corpo.push([r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os, r.prev || '—']); meta.push(r); });
+      g.forEach((r) => { corpo.push([r.cod + ' ' + r.nome, fmt(r.estoque), fmt(r.emp), fmt(r.media), String(r.diasN), r.os].concat(comPrazo ? [r.prev || '—'] : [])); meta.push(r); });
     });
     pdf.autoTable({
       startY: cy + ch + 7,
       margin: { left: M, right: M, top: 16, bottom: 16 },
-      head: [['ITEM', 'ESTOQUE', 'EMPENHADO', 'MÉDIA\nMENSAL', 'DIAS EM\nESTOQUE', 'O.S', 'PRAZO']],
+      head: [['ITEM', 'ESTOQUE', 'EMPENHADO', 'MÉDIA\nMENSAL', 'DIAS EM\nESTOQUE', 'O.S'].concat(comPrazo ? ['PRAZO'] : [])],
       body: corpo,
       theme: 'plain',
       styles: { font: 'helvetica', fontSize: 7.6, textColor: TINTA, cellPadding: { top: 2.1, bottom: 2.1, left: 1.5, right: 1.5 }, lineColor: [228, 228, 228], valign: 'middle' },
@@ -885,7 +887,7 @@ td.sug{font-weight:700;color:var(--paper)}
     });
     let y = pdf.lastAutoTable.finalY + 6;
     const exc = (cfg.excluirClientes || []).length ? ' Sem os itens do ' + cfg.excluirClientes.join(', ') + ' e' : '';
-    const nota = 'Separado por franquia (ordem alfabética); dentro de cada uma, ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. Prazo em vermelho = previsão da O.S já vencida. Somente itens com O.S aberta' + (res.tirPrio ? ', fora os ' + res.tirPrio + ' itens do relatório Prioridades O.S' : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
+    const nota = 'Separado por franquia (ordem alfabética); dentro de cada uma, ordenado pelos dias em estoque, do menor para o maior. Vermelho = ruptura; laranja = abaixo de 30 dias. ' + (comPrazo ? 'Prazo em vermelho = previsão da O.S já vencida. ' : '') + 'Somente itens com O.S aberta' + (res.tirPrio ? ', fora os ' + res.tirPrio + ' itens do relatório Prioridades O.S' : '') + (res.tirPrev ? (res.tirPrio ? ' e' : ',') + ' fora os ' + res.tirPrev + ' itens que já têm data de entrega' : '') + '.' + (exc ? exc + ' sem itens "Sem giro" / "Sem média".' : ' Sem itens "Sem giro" / "Sem média".');
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(...CINZA);
     const linhas = pdf.splitTextToSize(nota, W - 2 * M);
     if (y + linhas.length * 3.5 > 297 - 16) { pdf.addPage(); y = 20; }
@@ -905,17 +907,18 @@ td.sug{font-weight:700;color:var(--paper)}
       + '<p class="meta">Itens com O.S aberta e até 45 dias de estoque, posição de ' + (prev.base ? dataBR(new Date(prev.base)) : 'hoje') + '. Agora: <b style="color:var(--paper)" id="rel-n">' + prev.itens.length + ' itens</b> (<span id="rel-det">' + n.rup + ' em ruptura, ' + n.cri + ' críticos, ' + n.ate + ' em atenção</span>).</p>'
       + '<label class="field" for="rel-prio">Códigos que já estão no relatório Prioridades O.S (ficam de fora)<textarea id="rel-prio" rows="3" placeholder="Ex.: 8914, 7771, 5709" style="padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px;resize:vertical">' + esc(cfg.prioridades) + '</textarea></label>'
       + '<label class="check" for="rel-alemao"><input type="checkbox" id="rel-alemao"' + ((cfg.excluirClientes || []).includes('Bar do Alemão SP') ? ' checked' : '') + '><span>Tirar os itens do Bar do Alemão SP</span></label>'
+      + '<label class="check" for="rel-prev"><input type="checkbox" id="rel-prev"' + (cfg.semPrevisao !== false ? ' checked' : '') + '><span>Tirar os itens que já têm data de entrega (previsão da O.S)</span></label>'
       + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="rel-ok">Baixar relatório em PDF</button></div>');
-    const ler = () => ({ prioridades: $('rel-prio').value, excluirClientes: $('rel-alemao').checked ? ['Bar do Alemão SP'] : [] });
+    const ler = () => ({ prioridades: $('rel-prio').value, excluirClientes: $('rel-alemao').checked ? ['Bar do Alemão SP'] : [], semPrevisao: $('rel-prev').checked });
     const atualiza = () => { const r = relItens(ler()); const m = { rup: r.itens.filter((x) => x.diasN <= 0).length, cri: r.itens.filter((x) => x.diasN >= 1 && x.diasN <= 29).length, ate: r.itens.filter((x) => x.diasN >= 30).length }; $('rel-n').textContent = r.itens.length + ' itens'; $('rel-det').textContent = m.rup + ' em ruptura, ' + m.cri + ' críticos, ' + m.ate + ' em atenção'; };
-    $('rel-prio').addEventListener('input', atualiza); $('rel-alemao').addEventListener('change', atualiza);
+    $('rel-prio').addEventListener('input', atualiza); $('rel-alemao').addEventListener('change', atualiza); $('rel-prev').addEventListener('change', atualiza);
     $('rel-ok').addEventListener('click', async () => {
       const c = ler(); const r = relItens(c);
       if (!r.itens.length) { toast('Nenhum item entra no relatório com esses critérios.', true); return; }
       if (!window.jspdf || !window.jspdf.jsPDF) { toast('O gerador de PDF não carregou. Recarregue a página e tente de novo.', true); return; }
       const btn = $('rel-ok'); btn.disabled = true; btn.textContent = 'Gerando…';
       try {
-        if (state.canEdit && state.db) { state.db.doc('estoque/config').update({ prioridades: c.prioridades, excluirClientes: c.excluirClientes }).catch(() => {}); }
+        if (state.canEdit && state.db) { state.db.doc('estoque/config').update({ prioridades: c.prioridades, excluirClientes: c.excluirClientes, semPrevisao: c.semPrevisao }).catch(() => {}); }
         const blob = gerarPDF(r, c);
         const d = new Date(r.base || Date.now());
         const nomeArq = 'Itens ate 45 dias sem Prioridades ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + arqBusca() + '.pdf';
