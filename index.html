@@ -439,7 +439,7 @@ td.sug{font-weight:700;color:var(--paper)}
     const r = computa(doc.itens[i], i, doc.atualizadoEm);
     const m = ST[r.st];
     let tipo = 'entrada';
-    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']];
+    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—']].concat(doc.itens[i][14] ? [['Outras OS abertas', doc.itens[i][14]]] : [], [['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']]);
     layer.innerHTML = '<div class="overlay side" data-close><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dt"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:6px"><span class="meta">' + esc(r.cli) + ', código ' + esc(r.cod) + '</span><h2 id="dt">' + esc(r.nome) + '</h2></div><button class="close" type="button" data-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>'
       + '<div class="big" style="border-left-color:' + m.cor + '"><b style="color:' + m.cor + '">' + esc(r.dias) + '</b><span>' + (r.semGiro ? 'sem consumo no período' : 'dias de estoque, ' + m.label.toLowerCase()) + '</span></div>'
       + '<dl>' + linhas.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + esc(b) + '</dd></div>').join('') + '</dl>'
@@ -480,9 +480,13 @@ td.sug{font-weight:700;color:var(--paper)}
   const MAP_OS = {
     os: ['os', 'numeroos', 'numerodaos', 'ordemdeservico', 'nos', 'osnumero', 'numero'],
     cod: ['codnovo', 'codigonovo', 'codigoproduto', 'codproduto', 'codigo', 'cod', 'coditem', 'codigoitem'],
-    nome: ['descricaoproduto', 'descricao', 'produto', 'item', 'descricaodoproduto'],
+    nome: ['titulo', 'descricaoproduto', 'descricao', 'produto', 'item', 'descricaodoproduto'],
     etapa: ['ultimamovimentacao', 'movimentacao', 'etapa', 'setor', 'status', 'situacao', 'fase', 'posicao'],
-    prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo', 'entrega', 'dataentrega', 'prazoentrega', 'datadeentrega']
+    prev: ['previsao', 'previsaodeentrega', 'previsaoentrega', 'prazo', 'entrega', 'dataentrega', 'prazoentrega', 'datadeentrega'],
+    qtd: ['qtdos', 'quantidadeos', 'quantidade', 'qtd'],
+    prod: ['produzido', 'qtdproduzida', 'quantidadeproduzida'],
+    abert: ['abertura', 'dataabertura', 'datainsercao', 'datadeabertura'],
+    obs: ['observacoes', 'observacao', 'obs']
   };
   const NOMES = { cod: 'Código', nome: 'Descrição produto', media: 'Média mensal', cx: 'Qtd. por caixa', estoque: 'Estoque', emp: 'Empenhado', entrega: 'Entrega pendente', lead: 'LeadTime', dias: 'Dias', os: 'OS', etapa: 'Última movimentação', prev: 'Previsão', obs: 'Observação' };
 
@@ -559,24 +563,116 @@ td.sug{font-weight:700;color:var(--paper)}
     return { itens, col, aba: t.aba, semCod, semCli: itens.filter((x) => !x[2]).length };
   }
 
-  async function importarOS(file) {
-    const wb = await lerArquivo(file);
+  // Planilha de OS (uma linha por OS) e, opcional, a de Observações (OS + texto da montagem).
+  // Uma OS liga ao produto pelo código no título ("6304.5451 ..." → 5451) e pelos códigos
+  // "modelo.código" escritos nas observações, que é onde ficam as OS com vários produtos.
+  const RX_COD_OBS = /(?<![\d.,])(\d{4,5})\.(\d{3,6})(?!\d)/g;
+  const limpaOS = (v) => texto(v).replace(/\.0+$/, '').replace(/\.$/, '').trim();
+  function codTitulo(tit) { const m = String(tit || '').match(/^\s*(\d+)(?:\.(\d+))?/); return m ? (m[2] || m[1]) : ''; }
+  function linhaDoProduto(obs, cod) {
+    const linhas = String(obs || '').split(/\r?\n/);
+    const rx = new RegExp('(?<![\\d.,])\\d{4,5}\\.' + cod + '(?!\\d)');
+    const out = [];
+    for (let i = 0; i < linhas.length; i++) {
+      if (!rx.test(linhas[i])) continue;
+      const pedaco = [linhas[i]];
+      for (let j = i + 1; j < linhas.length; j++) { const l = linhas[j].trim(); if (!l || /^[-*]/.test(l) || /(?<![\d.,])\d{4,5}\.\d{3,6}(?!\d)/.test(l)) break; pedaco.push(l); }
+      out.push(pedaco.map((l) => l.trim().replace(/^-\s*/, '')).join(' · '));
+    }
+    return out.join(' / ').replace(/\s+/g, ' ').trim();
+  }
+  const obsResumida = (obs) => String(obs || '').split(/\r?\n/).map((l) => l.trim().replace(/^-\s*/, '')).filter(Boolean).join(' / ').replace(/\s+/g, ' ');
+  function etapaOS(o) {
+    if (o.etapa) { const e = o.etapa.trim(); return e[0].toUpperCase() + e.slice(1).toLowerCase(); }
+    return o.prod > 0 ? 'Concluída' : 'Não iniciada';
+  }
+  const osConcluida = (o) => !o.etapa && o.prod > 0;
+
+  function lerTabelaOS(wb) {
     const t = acharTabela(wb, (h) => h.some((x) => MAP_OS.os.slice(0, 6).includes(x)));
-    if (!t) throw new Error('Não achei a coluna de OS nas primeiras linhas. A planilha precisa ter uma coluna chamada “OS” (ou “Nº OS”, “Ordem de serviço”).');
+    if (!t) return null;
     const col = acharColunas(t.rows[t.hi], MAP_OS);
-    if (col.cod === undefined && col.nome === undefined) throw new Error('Não achei a coluna do produto. A planilha de OS precisa de uma coluna “Código” ou “Descrição produto” para ligar cada OS ao produto.');
-    const mapa = new Map();
+    const linhas = [];
     for (let i = t.hi + 1; i < t.rows.length; i++) {
       const r = t.rows[i]; const g = (c) => col[c] === undefined ? '' : r[col[c]];
-      const os = texto(g('os')).replace(/\.0+$/, '').replace(/\.$/, '');
-      if (!os || norm(os) === 'os') continue;
-      const [cod] = codigoDe(g('cod'), g('nome'));
-      if (!cod) continue;
-      const et = texto(g('etapa'));
-      mapa.set(cod, { os, etapa: et ? et[0].toUpperCase() + et.slice(1).toLowerCase() : '', prev: texto(g('prev')) });
+      const os = limpaOS(g('os'));
+      if (!/^\d+$/.test(os)) continue; // pula cabeçalho repetido e o rodapé "Filtros aplicados"
+      const ab = g('abert');
+      linhas.push({ os, nome: texto(g('nome')), cod: texto(g('cod')).replace(/\.0+$/, ''), etapa: col.etapa === undefined ? '' : String(g('etapa') ?? '').trim(), prev: texto(g('prev')), qtd: num(g('qtd')), prod: num(g('prod')), abert: ab instanceof Date ? ab.getTime() : (typeof ab === 'number' && ab > 30000 && ab < 80000) ? Math.round((ab - 25569) * 864e5) : 0, obs: col.obs === undefined ? '' : String(g('obs') ?? '') });
     }
-    if (!mapa.size) throw new Error('Não achei nenhuma OS ligada a um código de produto na planilha.');
-    return { mapa, col, aba: t.aba };
+    return { col, linhas, aba: t.aba };
+  }
+
+  async function importarOS(files) {
+    let ordens = null, obsMap = null; const nomes = [];
+    for (const f of files) {
+      const t = lerTabelaOS(await lerArquivo(f));
+      if (!t) throw new Error('Não achei a coluna de OS em “' + f.name + '”. A planilha precisa ter uma coluna chamada “O.S” (ou “OS”, “Ordem de serviço”).');
+      nomes.push(f.name);
+      const soObs = t.col.obs !== undefined && t.col.nome === undefined && t.col.cod === undefined;
+      if (soObs) { obsMap = obsMap || new Map(); t.linhas.forEach((l) => obsMap.set(l.os, l.obs)); }
+      else {
+        if (t.col.cod === undefined && t.col.nome === undefined) throw new Error('Em “' + f.name + '” não achei a coluna do produto (Título, Código ou Descrição) para ligar cada OS ao produto.');
+        ordens = t;
+        if (t.col.obs !== undefined) { obsMap = obsMap || new Map(); t.linhas.forEach((l) => { if (l.obs) obsMap.set(l.os, l.obs); }); }
+      }
+    }
+    if (!ordens && !obsMap) throw new Error('Nenhuma planilha de OS selecionada.');
+    return { ordens, obsMap, nomes };
+  }
+
+  // Monta, para cada produto do site, a OS em aberto mais recente, a etapa, a previsão e a observação.
+  function vincularOS(res, limpar) {
+    const tabs = ['jit', 'gen'].filter((t) => state.docs[t]);
+    const porOS = new Map(); const porCod = new Map();
+    const add = (cod, o, via) => { if (!cod) return; if (!porCod.has(cod)) porCod.set(cod, new Map()); if (!porCod.get(cod).has(o.os)) porCod.get(cod).set(o.os, via); };
+    let ultima = 0;
+    if (res.ordens) res.ordens.linhas.forEach((o) => {
+      porOS.set(o.os, o); if (o.abert > ultima) ultima = o.abert;
+      const obs = (res.obsMap && res.obsMap.get(o.os)) || '';
+      const doObs = [...obs.matchAll(RX_COD_OBS)].map((m) => m[2]);
+      // Título só com o número do modelo ("8804 POTE DE PAPEL") não é código de produto quando as observações listam os produtos.
+      const tituloComProduto = /^\s*\d+\.\d+/.test(o.nome) || !doObs.length;
+      if (o.cod) add(o.cod, o, 'titulo'); else if (tituloComProduto) add(codTitulo(o.nome), o, 'titulo');
+      doObs.forEach((c) => add(c, o, 'obs'));
+    });
+    // Produto sem OS no site só ganha OS aberta nos últimos 30 dias da planilha: as mais antigas sem apontamento costumam estar paradas ou já entregues.
+    const recente = ultima ? ultima - 30 * 864e5 : 0;
+    const st = { ligados: 0, viaObs: 0, manual: 0, limpos: 0, mudou: 0, obs: 0, amostra: [] };
+    const out = {};
+    for (const t of tabs) {
+      out[t] = state.docs[t].itens.map((x) => {
+        const y = x.slice(); const cod = String(y[0]); const atual = String(y[7] || '').trim();
+        if (!res.ordens) { // só observações: usa a OS que já está no produto
+          const obs = res.obsMap.get(atual);
+          if (atual && obs != null) { y[10] = linhaDoProduto(obs, cod) || obsResumida(obs); st.obs++; }
+          return y;
+        }
+        const cands = new Map(porCod.get(cod) || []);
+        const cur = atual ? porOS.get(atual) : null;
+        if (cur && !cands.has(atual)) cands.set(atual, 'manual');
+        const limite = cur ? cur.abert : recente; // com OS no site: só troca por uma OS aberta depois dela
+        const abertas = [...cands.keys()].map((n) => porOS.get(n)).filter((o) => (o === cur || o.abert >= limite) && !osConcluida(o))
+          .sort((a, b) => (b.abert - a.abert) || (Number(b.os) - Number(a.os)));
+        if (!abertas.length) {
+          if (limpar && atual) { y[7] = ''; y[8] = ''; y[9] = ''; y[10] = ''; y[14] = ''; st.limpos++; }
+          return y;
+        }
+        const o = abertas[0]; const via = cands.get(o.os);
+        st.ligados++; if (via === 'obs') st.viaObs++; if (via === 'manual') st.manual++;
+        const antes = [y[7], y[8], y[9]].join('|');
+        y[9] = o.prev || (atual === o.os ? y[9] : '');
+        y[7] = o.os; y[8] = etapaOS(o);
+        const outras = abertas.slice(1).map((a) => a.os);
+        while (y.length < 14) y.push(null);
+        y[14] = outras.join(', ');
+        const obs = res.obsMap && res.obsMap.get(o.os);
+        if (obs != null) { y[10] = linhaDoProduto(obs, cod) || obsResumida(obs); st.obs++; }
+        if ([y[7], y[8], y[9]].join('|') !== antes) { st.mudou++; st.amostra.push({ cod, nome: y[1], de: x[7] || '—', os: y[7], etapa: y[8], prev: y[9], outras: y[14] }); }
+        return y;
+      });
+    }
+    return { out, st, tabs };
   }
 
   // Atualiza os produtos que já estão no site, pelo código. Campos que a planilha não traz ficam como estão.
@@ -617,8 +713,8 @@ td.sug{font-weight:700;color:var(--paper)}
   }
 
   let modo = 'estoque';
-  $('imp-estoque').addEventListener('click', () => { modo = 'estoque'; $('file').value = ''; $('file').click(); });
-  $('imp-os').addEventListener('click', () => { modo = 'os'; $('file').value = ''; $('file').click(); });
+  $('imp-estoque').addEventListener('click', () => { modo = 'estoque'; $('file').multiple = false; $('file').value = ''; $('file').click(); });
+  $('imp-os').addEventListener('click', () => { modo = 'os'; $('file').multiple = true; $('file').value = ''; toast('Selecione a planilha de OS e a de Observações juntas (segure Ctrl).'); $('file').click(); });
   $('file').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     const aba = state.tab === 'gen' ? 'gen' : 'jit'; const nomeAba = aba === 'jit' ? 'produtos JIT' : 'genéricos';
@@ -664,33 +760,32 @@ td.sug{font-weight:700;color:var(--paper)}
           } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast('Não deu para salvar. Confira a conexão e tente de novo.', true); }
         });
       } else {
-        const res = await importarOS(file);
-        const tabs = ['jit', 'gen'].filter((t) => state.docs[t]);
-        let bate = 0; const total = tabs.reduce((a, t) => a + state.docs[t].itens.length, 0);
-        const codsLista = new Set(); tabs.forEach((t) => state.docs[t].itens.forEach((x) => codsLista.add(x[0])));
-        res.mapa.forEach((_, c) => { if (codsLista.has(c)) bate++; });
-        const fora = res.mapa.size - bate;
+        const res = await importarOS([...e.target.files]);
+        const completa = !!(res.ordens && res.ordens.col.abert !== undefined);
+        const prever = (limpar) => vincularOS(res, limpar);
+        let v = prever(completa);
+        const resumo = () => {
+          const s = v.st;
+          return res.ordens
+            ? '<p style="margin:0;font-size:16px;line-height:1.45"><b>' + s.ligados + ' produtos</b> do site ficam com OS em aberto' + (s.viaObs ? ' (' + s.viaObs + ' deles achados pelas observações)' : '') + '. ' + s.mudou + ' mudam de OS, etapa ou previsão.</p>'
+              + (s.manual ? '<p class="meta">' + s.manual + ' produtos mantêm a OS que já estava no site, porque a OS cita o código antigo do produto.</p>' : '')
+              + (s.limpos ? '<p class="meta">' + s.limpos + ' produtos ficam sem OS: a última OS deles já foi produzida ou não está na planilha.</p>' : '')
+              + (res.obsMap ? '<p class="meta">Observação atualizada em ' + s.obs + ' produtos, com a linha do produto na OS.</p>' : '<p class="warn">Sem a planilha de Observações, as OS com vários produtos (título só com o modelo) não são ligadas. Selecione as duas planilhas juntas, com Ctrl.</p>')
+              + (s.amostra.length ? '<div class="prev"><table><thead><tr><th>Produto</th><th>OS</th><th>Última movimentação</th><th>Previsão</th></tr></thead><tbody>' + s.amostra.slice().sort((p, q) => (q.de !== q.os) - (p.de !== p.os)).slice(0, 6).map((a) => '<tr><td style="white-space:normal">' + esc(a.cod) + ' - ' + esc(a.nome) + '</td><td>' + (a.de !== a.os ? '<span class="muted">' + esc(a.de) + ' → </span>' : '') + esc(a.os) + (a.outras ? '<span class="muted"> (+' + esc(a.outras) + ')</span>' : '') + '</td><td>' + esc(a.etapa) + '</td><td>' + esc(a.prev || '—') + '</td></tr>').join('') + '</tbody></table></div><p class="meta">Exemplos de produtos que mudam.</p>' : '')
+            : '<p style="margin:0;font-size:16px;line-height:1.45">Só a planilha de Observações: atualiza a observação de <b>' + s.obs + ' produtos</b>, pela OS que já está em cada um.</p>';
+        };
         dialogo('<h2 id="dlg-t">Importar OS</h2>'
-          + '<p class="meta">' + esc(file.name) + ', aba “' + esc(res.aba) + '”: <b style="color:var(--paper)">' + res.mapa.size + ' produtos com OS</b>, ' + bate + ' deles estão nas listas (JIT e genéricos).</p>'
-          + '<div class="cols">' + chips(res.col, MAP_OS) + '</div>'
-          + (fora ? '<p class="warn">' + fora + ' códigos da planilha de OS não estão em nenhuma lista e serão ignorados.</p>' : '')
-          + '<label class="check" for="limpar"><input type="checkbox" id="limpar"><span>Tirar a OS dos produtos que não aparecem nesta planilha (use se a planilha traz todas as OS abertas).</span></label>'
-          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">Atualizar OS de ' + bate + ' produtos</button></div>');
+          + '<p class="meta">' + res.nomes.map(esc).join(' + ') + (res.ordens ? ': <b style="color:var(--paper)">' + res.ordens.linhas.length + ' OS</b>' : '') + (res.obsMap ? ', ' + res.obsMap.size + ' observações' : '') + '.</p>'
+          + '<div id="os-resumo" style="display:flex;flex-direction:column;gap:12px">' + resumo() + '</div>'
+          + (res.ordens ? '<label class="check" for="limpar"><input type="checkbox" id="limpar"' + (completa ? ' checked' : '') + '><span>Tirar a OS dos produtos que não têm OS em aberto nesta planilha (use quando ela traz todas as OS).</span></label>' : '')
+          + '<div class="row-end"><button class="btn quiet" type="button" data-cancel>Cancelar</button><button class="btn solid" type="button" id="ok">Salvar</button></div>');
+        if ($('limpar')) $('limpar').addEventListener('change', () => { v = prever($('limpar').checked); $('os-resumo').innerHTML = resumo(); });
         $('ok').addEventListener('click', async () => {
-          const limpar = $('limpar').checked;
           $('ok').disabled = true; $('ok').textContent = 'Salvando…';
           try {
-            for (const t of tabs) {
-              const itens = state.docs[t].itens.map((x) => {
-                const y = x.slice(); const o = res.mapa.get(y[0]);
-                if (o) { y[7] = o.os; if (res.col.etapa !== undefined) y[8] = o.etapa; if (res.col.prev !== undefined) y[9] = o.prev; }
-                else if (limpar) { y[7] = ''; y[8] = ''; y[9] = ''; }
-                return y;
-              });
-              await state.db.doc('estoque/' + t).update({ itens });
-            }
-            await state.db.doc('estoque/os').set({ atualizadoEm: new Date().toISOString(), arquivo: file.name, produtos: bate });
-            fechar(); toast('OS atualizadas em ' + bate + ' produtos.');
+            for (const t of v.tabs) await state.db.doc('estoque/' + t).update({ itens: v.out[t] });
+            await state.db.doc('estoque/os').set({ atualizadoEm: new Date().toISOString(), arquivo: res.nomes.join(' + '), produtos: v.st.ligados });
+            fechar(); toast(res.ordens ? 'OS ligadas a ' + v.st.ligados + ' produtos.' : 'Observações atualizadas em ' + v.st.obs + ' produtos.');
           } catch (err) { $('ok').disabled = false; $('ok').textContent = 'Tentar de novo'; toast('Não deu para salvar as OS. Confira a conexão e tente de novo.', true); }
         });
       }
