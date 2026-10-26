@@ -703,10 +703,15 @@ td.sug{font-weight:700;color:var(--paper)}
   }
 
   // Atualiza os produtos que já estão no site, pelo código. Campos que a planilha não traz ficam como estão.
+  // Nas abas Produtos JIT e Genéricos, importação e relatório valem só para a aba aberta; em Ações de hoje, para as duas.
+  const abasAtivas = () => state.tab === 'jit' ? ['jit'] : state.tab === 'gen' ? ['gen'] : ['jit', 'gen'];
+  const nomeAbas = () => state.tab === 'jit' ? 'Produtos JIT' : state.tab === 'gen' ? 'Genéricos' : '';
   function mesclarEstoque(res) {
     const doArq = new Map(); res.itens.forEach((x) => { if (x[0] && !doArq.has(x[0])) doArq.set(x[0], x); });
     const c = res.col; const out = {}; const usados = new Set(); let atual = 0, faltaram = 0;
-    for (const t of ['jit', 'gen']) {
+    const abas = abasAtivas();
+    const deOutraAba = new Set(); ['jit', 'gen'].filter((t) => !abas.includes(t)).forEach((t) => (state.docs[t]?.itens || []).forEach((x) => deOutraAba.add(x[0])));
+    for (const t of abas) {
       const doc = state.docs[t]; if (!doc || !doc.itens.length) continue;
       let n = 0;
       const itens = doc.itens.map((x) => {
@@ -726,8 +731,8 @@ td.sug{font-weight:700;color:var(--paper)}
       });
       out[t] = { itens, n }; atual += n;
     }
-    const novos = res.itens.filter((x) => x[0] && !usados.has(x[0]));
-    return { out, atual, faltaram, novos };
+    const novos = res.itens.filter((x) => x[0] && !usados.has(x[0]) && !deOutraAba.has(x[0]));
+    return { out, atual, faltaram, novos, abas };
   }
 
   function chips(col, map, obrig) {
@@ -761,6 +766,7 @@ td.sug{font-weight:700;color:var(--paper)}
           + (vazio
             ? '<p class="warn">O site ainda não tem produtos. Os ' + res.itens.length + ' produtos da planilha vão entrar na aba ' + nomeAba + '.</p>'
             : '<p style="margin:0;font-size:16px;line-height:1.45">Vai atualizar <b>' + mx.atual + ' produtos</b> que já estão no site (' + partes.join(', ') + '), pelo código.</p>'
+              + (mx.abas.length === 1 ? '<p class="meta">Só a aba ' + (mx.abas[0] === 'jit' ? 'Produtos JIT' : 'Genéricos') + ' é atualizada. Para atualizar as duas de uma vez, importe pela aba Ações de hoje.</p>' : '')
               + (mx.faltaram ? '<p class="warn">' + mx.faltaram + ' produtos do site não vieram nesta planilha e ficam com os números anteriores.</p>' : '')
               + (mx.novos.length ? '<p class="meta">' + mx.novos.length + ' produtos da planilha não estão no site e ficam de fora.</p><label class="check" for="add-novos"><input type="checkbox" id="add-novos"><span>Adicionar esses ' + mx.novos.length + ' produtos na aba ' + nomeAba + '</span></label>' : ''))
           + '<div class="cols">' + chips(res.col, MAP_EST, ['nome', 'media', 'estoque', 'emp']) + '</div>'
@@ -835,7 +841,7 @@ td.sug{font-weight:700;color:var(--paper)}
     const prio = new Set(String(cfg.prioridades || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean));
     const fora = new Set(cfg.excluirClientes || []);
     const out = []; let base = null; let tirPrio = 0; let tirPrev = 0;
-    for (const t of ['jit', 'gen']) {
+    for (const t of abasAtivas()) {
       const doc = state.docs[t]; if (!doc) continue;
       if (doc.atualizadoEm && (!base || doc.atualizadoEm > base)) base = doc.atualizadoEm;
       doc.itens.forEach((it, i) => {
@@ -855,7 +861,7 @@ td.sug{font-weight:700;color:var(--paper)}
       });
     }
     out.sort((a, b) => a.cob - b.cob);
-    return { itens: out, base, tirPrio, tirPrev, prioQtd: prio.size, filtro: buscaTxt(), modo: modoPrev(cfg) };
+    return { itens: out, base, tirPrio, tirPrev, prioQtd: prio.size, filtro: buscaTxt(), modo: modoPrev(cfg), abaNome: nomeAbas() };
   }
   function dataBR(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
 
@@ -872,7 +878,7 @@ td.sug{font-weight:700;color:var(--paper)}
     pdf.setFontSize(19); pdf.setTextColor(...TINTA);
     pdf.text('Itens com até 45 dias de estoque', M, 24);
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(...CINZA);
-    const sub = (res.filtro ? 'Busca: "' + res.filtro + '". ' : '') + (res.modo === 'com' ? 'Somente itens com data de entrega (previsão da O.S)' : 'Itens com O.S aberta e até 45 dias de estoque') + (res.tirPrio ? ' · ' + res.tirPrio + (res.tirPrio > 1 ? ' prioridades' : ' prioridade') + ' em vermelho' : '');
+    const sub = (res.abaNome ? res.abaNome + '. ' : '') + (res.filtro ? 'Busca: "' + res.filtro + '". ' : '') + (res.modo === 'com' ? 'Somente itens com data de entrega (previsão da O.S)' : 'Itens com O.S aberta e até 45 dias de estoque') + (res.tirPrio ? ' · ' + res.tirPrio + (res.tirPrio > 1 ? ' prioridades' : ' prioridade') + ' em vermelho' : '');
     pdf.text(sub, M, 29.5);
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10.5); pdf.setTextColor(...TINTA);
     pdf.text('Posição de ' + dataBR(pos), W - M, 23, { align: 'right' });
@@ -935,7 +941,7 @@ td.sug{font-weight:700;color:var(--paper)}
     const cfg = relConfig();
     const prev = relItens(cfg);
     const n = { rup: prev.itens.filter((r) => r.diasN <= 0).length, cri: prev.itens.filter((r) => r.diasN >= 1 && r.diasN <= 29).length, ate: prev.itens.filter((r) => r.diasN >= 30).length };
-    dialogo('<h2 id="dlg-t">Relatório: itens com até 45 dias</h2>'
+    dialogo('<h2 id="dlg-t">Relatório: itens com até 45 dias' + (nomeAbas() ? ' · ' + nomeAbas() : '') + '</h2>'
       + avisoBusca()
       + '<p class="meta">Itens com O.S aberta e até 45 dias de estoque, posição de ' + (prev.base ? dataBR(new Date(prev.base)) : 'hoje') + '. Agora: <b style="color:var(--paper)" id="rel-n">' + prev.itens.length + ' itens</b> (<span id="rel-det">' + n.rup + ' em ruptura, ' + n.cri + ' críticos, ' + n.ate + ' em atenção</span>).</p>'
       + '<label class="field" for="rel-prio">Códigos de Prioridades O.S (saem em vermelho no relatório)<textarea id="rel-prio" rows="3" placeholder="Ex.: 8914, 7771, 5709" style="padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--paper);font-family:var(--body);font-size:15px;resize:vertical">' + esc(cfg.prioridades) + '</textarea></label>'
@@ -954,7 +960,7 @@ td.sug{font-weight:700;color:var(--paper)}
         if (state.canEdit && state.db) { state.db.doc('estoque/config').update({ prioridades: c.prioridades, excluirClientes: c.excluirClientes, prevModo: c.prevModo }).catch(() => {}); }
         const blob = gerarPDF(r, c);
         const d = new Date(r.base || Date.now());
-        const nomeArq = 'Itens ate 45 dias ' + (c.prevModo === 'com' ? 'com data de entrega ' : '') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + arqBusca() + '.pdf';
+        const nomeArq = 'Itens ate 45 dias ' + (state.tab === 'jit' ? 'JIT ' : state.tab === 'gen' ? 'Genericos ' : '') + (c.prevModo === 'com' ? 'com data de entrega ' : '') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + arqBusca() + '.pdf';
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nomeArq;
         document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
         fechar(); toast('Relatório baixado com ' + r.itens.length + ' itens.');
