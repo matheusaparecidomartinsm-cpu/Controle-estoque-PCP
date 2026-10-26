@@ -245,6 +245,8 @@ td.sug{font-weight:700;color:var(--paper)}
           <th class="n">Entrega pendente</th>
           <th class="n">Dias</th>
           <th class="n">Dias c/ entrega</th>
+          <th class="n" title="Quantidade que ainda falta entregar das O.S abertas do produto">O.S aberta (cx)</th>
+          <th class="n" title="(Disponível + O.S aberta) ÷ consumo por dia">Dias após O.S</th>
           <th>Ruptura</th>
           <th>OS</th>
           <th>Última movimentação</th>
@@ -303,7 +305,9 @@ td.sug{font-weight:700;color:var(--paper)}
       rupt = ruptDias <= 0 ? 'Já em ruptura' : dd(d) + ', em ' + ruptDias + (ruptDias === 1 ? ' dia' : ' dias');
     }
     const cobEnt = semGiro ? null : (disp + (temEnt ? entrega : 0)) / porDia;
-    return { i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob),
+    const osCx = os && typeof it[15] === 'number' ? it[15] : null;
+    const cobOS = semGiro || osCx === null ? null : (disp + osCx) / porDia;
+    return { osCx, cobOS, i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob),
       entregaTxt: temEnt ? fmt(entrega) : '', diasEnt: cobEnt === null ? '' : fmt(cobEnt), cobEnt };
   }
 
@@ -357,6 +361,8 @@ td.sug{font-weight:700;color:var(--paper)}
         + cell(6, 'n', r.entregaTxt && r.entregaTxt !== '0' ? esc(r.entregaTxt) : '<span class="muted">—</span>')
         + cell(7, 'n dias', '<span style="color:' + (r.semGiro ? 'var(--kraft)' : m.cor) + '">' + esc(r.dias) + '</span>', ';background-color:' + m.bg)
         + cell(8, 'n', r.diasEnt ? '<span style="color:' + (r.cobEnt < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + esc(r.diasEnt) + '</span>' : '<span class="muted">—</span>')
+        + cell(8, 'n', r.osCx !== null ? fmt(r.osCx) : '<span class="muted">—</span>', '', r.os && r.osCx === null ? 'Quantidade da O.S não encontrada (importe as planilhas de O.S e de Observações juntas)' : '')
+        + cell(8, 'n', r.cobOS !== null ? '<span style="font-weight:600;color:' + (r.cobOS < 20 ? 'var(--critico)' : r.cobOS < 40 ? 'var(--atencao)' : 'var(--ok)') + '">' + fmt(r.cobOS) + '</span>' : '<span class="muted">—</span>')
         + cell(9, '', '<span style="font-weight:' + (r.ruptDias !== null && r.ruptDias <= 15 ? 600 : 400) + ';color:' + (r.semGiro ? 'var(--dim)' : r.ruptDias <= 0 ? 'var(--falta)' : r.ruptDias <= 15 ? 'var(--critico)' : 'var(--kraft)') + '">' + esc(r.rupt) + '</span>')
         + cell(10, '', edt(r, 7, r.os)) + cell(11, '', edt(r, 8, r.etapa)) + cell(12, '', edt(r, 9, r.prev))
         + cell(13, 'obs', esc(r.obs), '', r.obs)
@@ -439,7 +445,7 @@ td.sug{font-weight:700;color:var(--paper)}
     const r = computa(doc.itens[i], i, doc.atualizadoEm);
     const m = ST[r.st];
     let tipo = 'entrada';
-    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—']].concat(doc.itens[i][14] ? [['Outras OS abertas', doc.itens[i][14]]] : [], [['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']]);
+    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['O.S aberta (cx)', r.osCx !== null ? fmt(r.osCx) : '—'], ['Dias após receber a O.S', r.cobOS !== null ? fmt(r.cobOS) : '—']].concat(doc.itens[i][14] ? [['Outras OS abertas', doc.itens[i][14]]] : [], [['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']]);
     layer.innerHTML = '<div class="overlay side" data-close><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dt"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:6px"><span class="meta">' + esc(r.cli) + ', código ' + esc(r.cod) + '</span><h2 id="dt">' + esc(r.nome) + '</h2></div><button class="close" type="button" data-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>'
       + '<div class="big" style="border-left-color:' + m.cor + '"><b style="color:' + m.cor + '">' + esc(r.dias) + '</b><span>' + (r.semGiro ? 'sem consumo no período' : 'dias de estoque, ' + m.label.toLowerCase()) + '</span></div>'
       + '<dl>' + linhas.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + esc(b) + '</dd></div>').join('') + '</dl>'
@@ -589,7 +595,19 @@ td.sug{font-weight:700;color:var(--paper)}
     return o.prod > 0 ? 'Concluída' : 'Não iniciada';
   }
   const osConcluida = (o) => !o.etapa && o.prod > 0;
+  // Unidades do produto numa O.S: soma das linhas "12.000 Unid - 2102.7771 ..." das observações.
+  // Uma linha de total ("1.000.000 unid" seguida das parciais) não é contada duas vezes.
+  function qtdNaOS(o, obs, cod) {
+    const rx = new RegExp('(?<![\\d.,])\\d{4,5}\\.' + cod + '(?!\\d)');
+    const qs = String(obs || '').split(/\r?\n/).filter((l) => rx.test(l)).map((l) => { const m = l.replace(/^[\s\-*•]+/, '').match(/^([\d.]+)/); return m ? Number(m[1].replace(/\./g, '')) : 0; }).filter((n) => n > 0);
+    if (qs.length) { const soma = qs.reduce((a, b) => a + b, 0); const mx = Math.max(...qs); return mx * 2 === soma && qs.length > 2 ? mx : soma; }
+    return codTitulo(o.nome) === String(cod) && o.qtd > 0 ? o.qtd : null; // O.S só desse produto, sem linha nas observações
+  }
+  // Quanto ainda falta entregar da O.S, na proporção do que já foi produzido.
+  const restanteOS = (o) => o.qtd > 0 ? Math.max(0, 1 - (o.prod || 0) / o.qtd) : 1;
 
+  // Algumas exportações formatam Produzido/Restante como data; volta ao número original.
+  const numCel = (v) => v instanceof Date ? Math.round((v.getTime() - Date.UTC(1899, 11, 30)) / 864e5) : num(v);
   function lerTabelaOS(wb) {
     const t = acharTabela(wb, (h) => h.some((x) => MAP_OS.os.slice(0, 6).includes(x)));
     if (!t) return null;
@@ -600,7 +618,7 @@ td.sug{font-weight:700;color:var(--paper)}
       const os = limpaOS(g('os'));
       if (!/^\d+$/.test(os)) continue; // pula cabeçalho repetido e o rodapé "Filtros aplicados"
       const ab = g('abert');
-      linhas.push({ os, nome: texto(g('nome')), cod: texto(g('cod')).replace(/\.0+$/, ''), etapa: col.etapa === undefined ? '' : String(g('etapa') ?? '').trim(), prev: texto(g('prev')), qtd: num(g('qtd')), prod: num(g('prod')), abert: ab instanceof Date ? ab.getTime() : (typeof ab === 'number' && ab > 30000 && ab < 80000) ? Math.round((ab - 25569) * 864e5) : 0, obs: col.obs === undefined ? '' : String(g('obs') ?? '') });
+      linhas.push({ os, nome: texto(g('nome')), cod: texto(g('cod')).replace(/\.0+$/, ''), etapa: col.etapa === undefined ? '' : String(g('etapa') ?? '').trim(), prev: texto(g('prev')), qtd: numCel(g('qtd')), prod: numCel(g('prod')), abert: ab instanceof Date ? ab.getTime() : (typeof ab === 'number' && ab > 30000 && ab < 80000) ? Math.round((ab - 25569) * 864e5) : 0, obs: col.obs === undefined ? '' : String(g('obs') ?? '') });
     }
     return { col, linhas, aba: t.aba };
   }
@@ -657,7 +675,7 @@ td.sug{font-weight:700;color:var(--paper)}
         const abertas = [...cands.keys()].map((n) => porOS.get(n)).filter((o) => (o === cur || o.abert >= limite) && !osConcluida(o))
           .sort((a, b) => (b.abert - a.abert) || (Number(b.os) - Number(a.os)));
         if (!abertas.length) {
-          if (limpar && atual) { y[7] = ''; y[8] = ''; y[9] = ''; y[10] = ''; y[14] = ''; st.limpos++; }
+          if (limpar && atual) { y[7] = ''; y[8] = ''; y[9] = ''; y[10] = ''; y[14] = ''; if (y.length > 15) y[15] = null; st.limpos++; }
           return y;
         }
         const o = abertas[0]; const via = cands.get(o.os);
@@ -668,6 +686,13 @@ td.sug{font-weight:700;color:var(--paper)}
         const outras = abertas.slice(1).map((a) => a.os);
         while (y.length < 14) y.push(null);
         y[14] = outras.join(', ');
+        while (y.length < 16) y.push(null);
+        { // quantidade em aberto das O.S (principal + outras), em caixas
+          let un = 0, achou = false;
+          for (const a of abertas) { const q = qtdNaOS(a, res.obsMap && res.obsMap.get(a.os), cod); if (q != null) { un += q * restanteOS(a); achou = true; } }
+          if (achou && y[4] > 0) y[15] = Math.round(un / y[4]);
+          else if (atual !== o.os) y[15] = null; // O.S nova sem quantidade conhecida
+        }
         const obs = res.obsMap && res.obsMap.get(o.os);
         if (obs != null) { y[10] = linhaDoProduto(obs, cod) || obsResumida(obs); st.obs++; }
         if ([y[7], y[8], y[9]].join('|') !== antes) { st.mudou++; st.amostra.push({ cod, nome: y[1], de: x[7] || '—', os: y[7], etapa: y[8], prev: y[9], outras: y[14] }); }
