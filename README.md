@@ -4,6 +4,10 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 
 ## O que o site faz
 
+- **Visual estilo Power BI**: barra fixa no topo com as abas (Visão geral, Ações de hoje, Produtos JIT, Genéricos, O.S em aberto), filtros na lateral (busca, situação, O.S, franquia) que valem para tabelas, gráficos e relatórios, KPIs no topo de cada página e gráficos em Chart.js 4.4.1.
+- **Visão geral**: KPIs do dia, rupturas previstas nas próximas 8 semanas, itens por situação, situação por franquia, disponível × consumo, % em dia por franquia, franquias mais críticas e os itens mais urgentes.
+- **O.S em aberto**: uma linha por O.S com os produtos ligados, O.S por setor, situação (no prazo, sem previsão, atrasada) e entregas previstas por semana.
+
 - **Ações de hoje** (aba que abre primeiro): três listas do que precisa ser feito. *Precisa abrir OS*: itens sem OS que, contando a entrega pendente, acabam antes do prazo de produção mais a margem de segurança, com a quantidade sugerida em caixas (consumo do período menos disponível e entrega pendente). *OS atrasadas*: OS com a previsão vencida. *OS sem previsão*: itens com OS aberta, sem data, que acabam antes do prazo. O prazo (padrão 60 dias) e a margem (padrão 15 dias) ficam na própria tela; dá para usar o LeadTime da planilha item por item. Baixa as listas em Excel.
 
 - Mostra cada produto em uma linha, como na planilha de monitoramento: descrição, média mensal, quantidade por caixa, estoque, empenhado, disponível, dias, ruptura, OS, última movimentação, previsão e observação.
@@ -35,4 +39,5 @@ Carregadas por CDN:
 - Supabase JS 2.45.4: login e banco de dados
 
 - SheetJS (xlsx 0.18.5): leitura das planilhas
+- Chart.js 4.4.1: gráficos do painel
 - jsPDF 2.5.1 e jsPDF-AutoTable 3.8.2: geração do relatório em PDF
