@@ -353,6 +353,7 @@ td.sug{font-weight:700;color:var(--paper)}
               <th class="n">Dias c/ entrega</th>
               <th class="n" title="Quantidade que ainda falta entregar das O.S abertas do produto">O.S aberta (cx)</th>
               <th class="n" title="(Disponível + O.S aberta) ÷ consumo por dia">Dias após O.S</th>
+              <th title="Data limite para abrir a próxima O.S, com o consumo + folga">Próxima O.S</th>
               <th>Ruptura</th>
               <th>OS</th>
               <th>Última movimentação</th>
@@ -418,7 +419,13 @@ td.sug{font-weight:700;color:var(--paper)}
     const cobEnt = semGiro ? null : (disp + (temEnt ? entrega : 0)) / porDia;
     const osCx = os && typeof it[15] === 'number' ? it[15] : null;
     const cobOS = semGiro || osCx === null ? null : (disp + osCx) / porDia;
-    return { osCx, cobOS, i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob),
+    // Próxima O.S: com o consumo + folga, quantos dias faltam para ter de abrir a próxima, contando o estoque e o que falta chegar da O.S atual.
+    const pl = planoCfg(); const porDiaP = porDia * (1 + pl.folga / 100);
+    const proxLead = pl.usarLead && +it[13] > 0 ? Math.round(+it[13]) : pl.prazo;
+    const proxDias = !os || semGiro || osCx === null ? null : Math.floor((disp + osCx) / porDiaP - proxLead - pl.margem);
+    const retaFinal = !!os && !String(it[14] || '').trim() && /corte|colagem|copo|pote|balde|acabamento|expedi|revis/i.test(etapa || '');
+    const excesso = cobOS !== null && cobOS > pl.teto;
+    return { osCx, cobOS, proxDias, proxLead, retaFinal, excesso, i, cod, nome, cli: cli || 'Genérico', media, cx, estoque, emp, disp, os, etapa, prev, obs, sem, semGiro, cob, st, rupt, ruptDias, dias: semGiro ? (sem || 'Sem giro') : fmt(cob),
       entregaTxt: temEnt ? fmt(entrega) : '', diasEnt: cobEnt === null ? '' : fmt(cobEnt), cobEnt };
   }
 
@@ -466,6 +473,15 @@ td.sug{font-weight:700;color:var(--paper)}
   const kpi = (rot, valor, sub, cor, pct) => '<div class="kpi" style="--k:' + cor + '"><span>' + rot + '</span><b>' + valor + '</b><small>' + sub + '</small><div class="barra"><i data-w="' + Math.max(0, Math.min(100, pct || 0)) + '"></i></div></div>';
   const card = (titulo, selo, corpo, cls) => '<div class="card' + (cls ? ' ' + cls : '') + '"><div class="card-cab"><h3>' + titulo + '</h3>' + (selo ? '<span class="selo">' + selo + '</span>' : '') + '</div>' + corpo + '</div>';
   const legenda = (itens) => '<div class="legenda">' + itens.map(([rot, cor]) => '<span><i style="background:' + cor + '"></i>' + esc(rot) + '</span>').join('') + '</div>';
+  // Texto da próxima O.S: 'Abrir agora', data limite, ou alerta de excesso.
+  function proxHTML(r) {
+    if (r.excesso) return '<span class="pilula p-ne" title="Depois da O.S atual o estoque passa do teto de cobertura">Excesso</span>';
+    if (r.proxDias === null) return '<span class="muted">—</span>';
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + Math.max(0, r.proxDias));
+    const fin = r.retaFinal ? ' <span class="pilula p-at" title="Única O.S do material e já está nas etapas finais">reta final</span>' : '';
+    if (r.proxDias <= 0) return '<b style="color:var(--vermelho)">Abrir agora</b>' + fin;
+    return '<span style="color:' + (r.proxDias <= 15 ? 'var(--laranja);font-weight:700' : 'var(--kraft)') + '">' + dd(d) + ', em ' + r.proxDias + (r.proxDias === 1 ? ' dia' : ' dias') + '</span>' + fin;
+  }
   const pilula = (r) => r.semGiro ? '<span class="pilula p-ne">Sem giro</span>' : r.st === 'falta' ? '<span class="pilula p-cr">Em falta</span>' : r.st === 'critico' ? '<span class="pilula p-cr">Crítico</span>' : r.st === 'atencao' ? '<span class="pilula p-at">Atenção</span>' : '<span class="pilula p-ok">Em dia</span>';
   const iniciais = (s) => String(s).replace(/[^A-Za-zÀ-ú0-9 ]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
   function animarBarras(raiz) { requestAnimationFrame(() => raiz.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; })); }
@@ -580,14 +596,15 @@ td.sug{font-weight:700;color:var(--paper)}
       + card('Situação das O.S', 'O.S', '<div class="chart"><canvas id="ch-osst"></canvas></div>' + legenda([['No prazo', COR.ok], ['Sem previsão', '#f5a623'], ['Atrasada', COR.falta]]))
       + '</div>'
       + card('Entregas previstas por semana', 'O.S', '<div class="chart"><canvas id="ch-prev"></canvas></div>' + legenda([['O.S com previsão na semana', '#4f8ef7']]))
-      + card('Lista de O.S', L.length + ' O.S', L.length ? '<div class="sheet acoes-sheet" style="max-height:520px"><table><thead><tr><th>Produto mais urgente</th><th>O.S</th><th class="n">Produtos</th><th>Última movimentação</th><th>Previsão</th><th>Situação</th><th class="n">Dias (pior item)</th><th class="n">Dias após O.S</th></tr></thead><tbody>'
+      + card('Lista de O.S', L.length + ' O.S', L.length ? '<div class="sheet acoes-sheet" style="max-height:520px"><table><thead><tr><th>Produto mais urgente</th><th>O.S</th><th class="n">Produtos</th><th>Última movimentação</th><th>Previsão</th><th>Situação</th><th class="n">Dias (pior item)</th><th class="n">Dias após O.S</th><th>Abrir próxima</th></tr></thead><tbody>'
         + L.slice().sort((a, b) => (b.atraso - a.atraso) || ((a.pior ? a.pior.cob : 1e9) - (b.pior ? b.pior.cob : 1e9))).map((o) => {
           const r = o.pior; const m = ST[r.st];
           return '<tr class="r"><td style="--st:' + m.cor + '"><span class="item"><span class="cod">' + esc(r.cod) + '</span><button class="desc" type="button" data-t="' + r.tab + '" data-i="' + r.i + '" title="' + esc(o.itens.map((x) => x.cod + ' ' + x.nome).join('\n')) + '">' + esc(r.nome) + '</button></span></td>'
             + '<td><b>' + esc(o.os) + '</b></td><td class="n">' + o.itens.length + '</td><td>' + esc(o.etapa || '—') + '</td><td>' + esc(o.prev || '—') + '</td>'
             + '<td>' + (o.status === 'atrasada' ? '<span class="pilula p-cr">Atrasada ' + o.atraso + ' d</span>' : o.status === 'semprev' ? '<span class="pilula p-at">Sem previsão</span>' : '<span class="pilula p-ok">No prazo</span>') + '</td>'
             + '<td class="n" style="font-weight:700;color:' + (r.semGiro ? 'var(--kraft)' : m.cor) + '">' + (r.semGiro ? '—' : fmt(r.cob)) + '</td>'
-            + '<td class="n">' + (r.cobOS !== null ? fmt(r.cobOS) : '<span class="muted">—</span>') + '</td></tr>';
+            + '<td class="n">' + (r.cobOS !== null ? fmt(r.cobOS) : '<span class="muted">—</span>') + '</td>'
+            + '<td>' + proxHTML(o.itens.reduce((m, x) => (x.proxDias !== null && (m.proxDias === null || x.proxDias < m.proxDias) ? x : m), o.itens[0])) + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '<p class="vazio">Nenhuma O.S em aberto com esses filtros.</p>');
     const setores = {}; L.forEach((o) => { const k = o.etapa || 'Sem movimentação'; const s = setores[k] || (setores[k] = { prazo: 0, semprev: 0, atrasada: 0, n: 0 }); s[o.status]++; s.n++; });
     const nomesS = Object.keys(setores).sort((a, b) => setores[b].n - setores[a].n);
@@ -604,9 +621,11 @@ td.sug{font-weight:700;color:var(--paper)}
     const base = itensPagina().filter(casaBusca).filter((r) => !r.semGiro);
     const v = base.length || 1;
     $('acoes-kpi').innerHTML = kpi('Precisam abrir O.S', fmt(A.abrir.length), A.abrir.filter((r) => r.antesDaOS).length + ' acabam antes da O.S chegar', 'var(--vermelho)', pctN(A.abrir.length, v))
-      + kpi('Caixas sugeridas', fmt(A.abrir.reduce((a, r) => a + r.sug, 0)), 'soma das sugestões de O.S', 'var(--azul)', 100)
+      + kpi('Caixas sugeridas', fmt(A.abrir.reduce((a, r) => a + r.sug, 0) + A.proxima.reduce((a, r) => a + r.sugProx, 0)), 'O.S novas e próximas O.S', 'var(--azul)', 100)
+      + kpi('Abrir a próxima O.S', fmt(A.proxima.length), A.proxima.filter((r) => r.proxDias <= 0).length + ' já passaram da data', 'var(--azul)', pctN(A.proxima.length, v))
       + kpi('O.S atrasadas', fmt(A.atrasadas.length), 'previsão vencida', 'var(--laranja)', pctN(A.atrasadas.length, v))
-      + kpi('O.S sem previsão', fmt(A.semPrev.length), 'acabam antes do prazo', 'var(--roxo)', pctN(A.semPrev.length, v));
+      + kpi('O.S sem previsão', fmt(A.semPrev.length), 'acabam antes do prazo', 'var(--roxo)', pctN(A.semPrev.length, v))
+      + kpi('Acima do teto', fmt(A.excesso.length), 'mais de ' + A.cfg.teto + ' dias após a O.S', 'var(--sem)', pctN(A.excesso.length, v));
     animarBarras($('acoes-kpi'));
   }
   function kpisTabela(rows) {
@@ -635,7 +654,7 @@ td.sug{font-weight:700;color:var(--paper)}
     // contadores das abas (sem filtro de situação/cliente: o total do dia)
     if (temDados) {
       const A = state.tab === 'acoes' && !document.querySelector('#acoes .edt-in:not([disabled])') ? renderAcoes() : calcAcoes();
-      $('n-acoes').textContent = A.abrir.length + A.atrasadas.length + A.semPrev.length;
+      $('n-acoes').textContent = A.abrir.length + A.proxima.length + A.atrasadas.length + A.semPrev.length;
       if (state.tab === 'acoes') kpisAcoes(A);
       $('n-os').textContent = osAbertas().length;
     } else {
@@ -669,6 +688,7 @@ td.sug{font-weight:700;color:var(--paper)}
         + cell(8, 'n', r.diasEnt ? '<span style="color:' + (r.cobEnt < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + esc(r.diasEnt) + '</span>' : '<span class="muted">—</span>')
         + cell(8, 'n', r.osCx !== null ? fmt(r.osCx) : '<span class="muted">—</span>', '', r.os && r.osCx === null ? 'Quantidade da O.S não encontrada (importe as planilhas de O.S e de Observações juntas)' : '')
         + cell(8, 'n', r.cobOS !== null ? '<span style="font-weight:600;color:' + (r.cobOS < 20 ? 'var(--critico)' : r.cobOS < 40 ? 'var(--atencao)' : 'var(--ok)') + '">' + fmt(r.cobOS) + '</span>' : '<span class="muted">—</span>')
+        + cell(9, '', proxHTML(r))
         + cell(9, '', '<span style="font-weight:' + (r.ruptDias !== null && r.ruptDias <= 15 ? 600 : 400) + ';color:' + (r.semGiro ? 'var(--dim)' : r.ruptDias <= 0 ? 'var(--falta)' : r.ruptDias <= 15 ? 'var(--critico)' : 'var(--kraft)') + '">' + esc(r.rupt) + '</span>')
         + cell(10, '', edt(r, 7, r.os)) + cell(11, '', edt(r, 8, r.etapa)) + cell(12, '', edt(r, 9, r.prev))
         + cell(13, 'obs', esc(r.obs), '', r.obs)
@@ -751,7 +771,7 @@ td.sug{font-weight:700;color:var(--paper)}
     const r = computa(doc.itens[i], i, doc.atualizadoEm);
     const m = ST[r.st];
     let tipo = 'entrada';
-    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['O.S aberta (cx)', r.osCx !== null ? fmt(r.osCx) : '—'], ['Dias após receber a O.S', r.cobOS !== null ? fmt(r.cobOS) : '—']].concat(doc.itens[i][14] ? [['Outras OS abertas', doc.itens[i][14]]] : [], [['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']]);
+    const linhas = [['Média mensal', fmt(r.media)], ['Qtd. por caixa', fmt(r.cx)], ['Estoque', fmt(r.estoque)], ['Empenhado', fmt(r.emp)], ['Disponível', fmt(r.disp)], ['Entrega pendente', r.entregaTxt || '—'], ['Dias com entrega', r.diasEnt || '—'], ['Ruptura', r.rupt], ['OS', r.os || '—'], ['O.S aberta (cx)', r.osCx !== null ? fmt(r.osCx) : '—'], ['Dias após receber a O.S', r.cobOS !== null ? fmt(r.cobOS) : '—'], ['Abrir a próxima O.S', r.excesso ? 'Excesso: passa do teto' : r.proxDias === null ? '—' : r.proxDias <= 0 ? 'Agora' : 'Em ' + r.proxDias + ' dias']].concat(doc.itens[i][14] ? [['Outras OS abertas', doc.itens[i][14]]] : [], [['Última movimentação', r.etapa || '—'], ['Previsão', r.prev || '—']]);
     layer.innerHTML = '<div class="overlay side" data-close><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dt"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:6px"><span class="meta">' + esc(r.cli) + ', código ' + esc(r.cod) + '</span><h2 id="dt">' + esc(r.nome) + '</h2></div><button class="close" type="button" data-close aria-label="Fechar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>'
       + '<div class="big" style="border-left-color:' + m.cor + '"><b style="color:' + m.cor + '">' + esc(r.dias) + '</b><span>' + (r.semGiro ? 'sem consumo no período' : 'dias de estoque, ' + m.label.toLowerCase()) + '</span></div>'
       + '<dl>' + linhas.map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + esc(b) + '</dd></div>').join('') + '</dl>'
@@ -1280,8 +1300,9 @@ td.sug{font-weight:700;color:var(--paper)}
   });
 
   // ---------- ações de hoje: precisa abrir OS e OS atrasadas ----------
-  const PLANO_PADRAO = { prazo: 60, margem: 15, usarLead: false };
-  function planoCfg() { const p = Object.assign({}, PLANO_PADRAO, (state.relCfg && state.relCfg.plano) || {}); p.prazo = Math.max(1, Math.round(+p.prazo || 60)); p.margem = Math.max(0, Math.round(+p.margem || 0)); return p; }
+  // folga: % a mais no consumo para planejar (o consumo varia); teto: cobertura máxima em dias para não produzir em excesso.
+  const PLANO_PADRAO = { prazo: 60, margem: 15, usarLead: false, folga: 10, teto: 120 };
+  function planoCfg() { const p = Object.assign({}, PLANO_PADRAO, (state.relCfg && state.relCfg.plano) || {}); p.prazo = Math.max(1, Math.round(+p.prazo || 60)); p.margem = Math.max(0, Math.round(+p.margem || 0)); p.folga = Math.max(0, Math.min(100, Math.round(p.folga === undefined || p.folga === '' ? 10 : +p.folga || 0))); p.teto = Math.max(p.prazo + p.margem, Math.round(+p.teto || 120)); return p; }
   function lerPrev(txt, hoje) {
     const m = String(txt || '').match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/); if (!m) return null;
     let ano = m[3] ? +m[3] : hoje.getFullYear(); if (ano < 100) ano += 2000;
@@ -1291,18 +1312,19 @@ td.sug{font-weight:700;color:var(--paper)}
   }
   function calcAcoes() {
     const cfg = planoCfg(); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const abrir = [], atrasadas = [], semPrev = [];
+    const abrir = [], atrasadas = [], semPrev = [], proxima = [], excesso = [];
     for (const t of ['jit', 'gen']) {
       const doc = state.docs[t]; if (!doc) continue;
       doc.itens.forEach((it, i) => {
         const r = computa(it, i, doc.atualizadoEm); if (r.semGiro || !casaBusca(r)) return;
         const porDia = r.media / 30, ent = typeof it[12] === 'number' ? it[12] : 0;
+        const porDiaP = porDia * (1 + cfg.folga / 100); // consumo com folga, para planejar
         const lead = cfg.usarLead && +it[13] > 0 ? Math.round(+it[13]) : cfg.prazo;
-        const cobEnt = (r.disp + ent) / porDia;
+        const cobEnt = (r.disp + ent) / porDia; const cobEntP = (r.disp + ent) / porDiaP;
         const x = Object.assign({}, r, { tab: t, ent, lead, cobEnt: Math.round(cobEnt) });
         if (!r.os) {
-          if (cobEnt < lead + cfg.margem) {
-            x.sug = Math.max(1, Math.ceil(porDia * (lead + cfg.margem) - (r.disp + ent)));
+          if (cobEntP < lead + cfg.margem) {
+            x.sug = Math.max(1, Math.ceil(Math.min(porDiaP * (lead + cfg.margem), porDia * cfg.teto) - (r.disp + ent)));
             x.antesDaOS = cobEnt < lead;
             abrir.push(x);
           }
@@ -1310,13 +1332,22 @@ td.sug{font-weight:700;color:var(--paper)}
           const pv = lerPrev(r.prev, hoje);
           if (pv && pv < hoje) { x.atraso = Math.round((hoje - pv) / 864e5); atrasadas.push(x); }
           else if (!r.prev && cobEnt < lead) semPrev.push(x);
+          if (r.excesso) excesso.push(x);
+          else if (r.proxDias !== null && r.proxDias <= 7) {
+            // estoque quando a nova O.S chegar; a sugestão cobre prazo + margem com folga, sem passar do teto
+            const naChegada = Math.max(0, r.disp + r.osCx - porDiaP * lead);
+            x.sugProx = Math.max(1, Math.ceil(Math.min(porDiaP * (lead + cfg.margem), porDia * cfg.teto) - naChegada));
+            proxima.push(x);
+          }
         }
       });
     }
     abrir.sort((a, b) => a.cobEnt - b.cobEnt);
     atrasadas.sort((a, b) => b.atraso - a.atraso || a.cobEnt - b.cobEnt);
     semPrev.sort((a, b) => a.cobEnt - b.cobEnt);
-    return { cfg, abrir, atrasadas, semPrev };
+    proxima.sort((a, b) => a.proxDias - b.proxDias);
+    excesso.sort((a, b) => b.cobOS - a.cobOS);
+    return { cfg, abrir, atrasadas, semPrev, proxima, excesso };
   }
   function renderAcoes() {
     const A = calcAcoes(); const c = A.cfg;
@@ -1356,32 +1387,57 @@ td.sug{font-weight:700;color:var(--paper)}
         + '<td class="n dias" style="color:' + dCor(r.cobEnt) + '">' + fmt(r.cobEnt) + '</td>'
         + '<td class="n">' + r.lead + ' d</td></tr>').join('')
       + '</tbody></table></div>' : vazio('Todas as OS dos itens com estoque curto têm previsão.');
+    const tProx = A.proxima.length ? '<div class="sheet acoes-sheet"><table><thead><tr><th>Produto</th><th>O.S atual</th><th>Última movimentação</th><th class="n">Disponível</th><th class="n">O.S aberta (cx)</th><th class="n">Dias após O.S</th><th>Abrir próxima</th><th class="n">Sugestão</th></tr></thead><tbody>'
+      + A.proxima.map((r) => '<tr class="r">' + prod(r)
+        + '<td>' + esc(r.os) + '</td>'
+        + '<td>' + esc(r.etapa || '—') + '</td>'
+        + '<td class="n" style="color:' + (r.disp < 0 ? 'var(--falta)' : 'var(--paper)') + '">' + fmt(r.disp) + '</td>'
+        + '<td class="n">' + fmt(r.osCx) + '</td>'
+        + '<td class="n dias" style="color:' + dCor(r.cobOS) + '">' + fmt(r.cobOS) + '</td>'
+        + '<td>' + proxHTML(r) + '</td>'
+        + '<td class="n sug">' + fmt(r.sugProx) + ' cx</td></tr>').join('')
+      + '</tbody></table></div>' : vazio('Nenhum material precisa da próxima O.S nos próximos 7 dias.');
+    const tExc = A.excesso.length ? '<div class="sheet acoes-sheet"><table><thead><tr><th>Produto</th><th>O.S</th><th class="n">Disponível</th><th class="n">O.S aberta (cx)</th><th class="n">Média mensal</th><th class="n">Dias após O.S</th><th class="n">Acima do teto</th></tr></thead><tbody>'
+      + A.excesso.map((r) => '<tr class="r">' + prod(r)
+        + '<td>' + esc(r.os) + '</td>'
+        + '<td class="n">' + fmt(r.disp) + '</td>'
+        + '<td class="n">' + fmt(r.osCx) + '</td>'
+        + '<td class="n">' + fmt(r.media) + '</td>'
+        + '<td class="n dias" style="color:var(--azul)">' + fmt(r.cobOS) + '</td>'
+        + '<td class="n">' + fmt(r.cobOS - c.teto) + ' dias</td></tr>').join('')
+      + '</tbody></table></div>' : vazio('Nenhuma O.S deixa o estoque acima do teto de cobertura.');
     const plano = '<div class="plano">'
       + '<label class="plano-campo" for="pl-prazo">Prazo de produção<span><input id="pl-prazo" type="number" min="1" max="365" value="' + c.prazo + '"' + (state.canEdit ? '' : ' disabled') + '> dias</span></label>'
       + '<label class="plano-campo" for="pl-margem">Margem de segurança<span><input id="pl-margem" type="number" min="0" max="180" value="' + c.margem + '"' + (state.canEdit ? '' : ' disabled') + '> dias</span></label>'
+      + '<label class="plano-campo" for="pl-folga">Folga no consumo<span><input id="pl-folga" type="number" min="0" max="100" value="' + c.folga + '"' + (state.canEdit ? '' : ' disabled') + '> %</span></label>'
+      + '<label class="plano-campo" for="pl-teto">Cobertura máxima<span><input id="pl-teto" type="number" min="30" max="720" value="' + c.teto + '"' + (state.canEdit ? '' : ' disabled') + '> dias</span></label>'
       + '<label class="check" for="pl-lead"><input type="checkbox" id="pl-lead"' + (c.usarLead ? ' checked' : '') + (state.canEdit ? '' : ' disabled') + '><span>Usar o LeadTime da planilha quando o item tiver</span></label>'
       + '<button class="btn" type="button" id="acoes-xlsx">Baixar lista em Excel</button>'
       + '</div>';
     $('acoes').innerHTML = plano
       + bloco('Precisa abrir OS', 'Itens sem OS que, contando a entrega pendente, acabam antes de ' + c.prazo + ' dias de produção mais ' + c.margem + ' de margem. A sugestão cobre esse período em caixas inteiras. Ruptura em vermelho: acaba antes de uma OS aberta hoje ficar pronta.', A.abrir.length, tAbrir)
+      + bloco('Abrir a próxima O.S', 'Materiais com O.S em andamento cujo estoque, somado ao que falta chegar dessa O.S, não dura até uma nova O.S ficar pronta (' + c.prazo + ' dias + ' + c.margem + ' de margem, com consumo ' + c.folga + '% maior). Aparecem 7 dias antes da data limite. A sugestão cobre esse período sem passar de ' + c.teto + ' dias de cobertura. “Reta final”: única O.S do material, já nas etapas finais.', A.proxima.length, tProx)
       + bloco('OS atrasadas', 'OS abertas com a previsão de entrega já vencida.', A.atrasadas.length, tAtr)
-      + bloco('OS sem previsão', 'Itens com OS aberta, sem data de previsão, que acabam antes do prazo de produção.', A.semPrev.length, tSem);
+      + bloco('OS sem previsão', 'Itens com OS aberta, sem data de previsão, que acabam antes do prazo de produção.', A.semPrev.length, tSem)
+      + bloco('Estoque acima do teto', 'Depois de receber a O.S atual, estes materiais ficam com mais de ' + c.teto + ' dias de cobertura. Não abrir nova O.S e, se der, reduzir a atual.', A.excesso.length, tExc);
     const salvaPlano = () => {
       if (!state.canEdit || !state.db) return;
-      const plano = { prazo: Math.max(1, Math.round(+$('pl-prazo').value || 60)), margem: Math.max(0, Math.round(+$('pl-margem').value || 0)), usarLead: $('pl-lead').checked };
+      const plano = { prazo: Math.max(1, Math.round(+$('pl-prazo').value || 60)), margem: Math.max(0, Math.round(+$('pl-margem').value || 0)), usarLead: $('pl-lead').checked, folga: Math.max(0, Math.min(100, Math.round(+$('pl-folga').value || 0))), teto: Math.max(30, Math.round(+$('pl-teto').value || 120)) };
       state.relCfg = Object.assign({}, state.relCfg || {}, { plano });
       state.quieto = true;
       state.db.doc('estoque/config').update({ plano }).then(() => toast('Prazo de produção salvo.')).catch(() => toast('Não deu para salvar o prazo. Tente de novo.', true)).finally(() => { state.quieto = false; rerender(false); });
     };
-    ['pl-prazo', 'pl-margem'].forEach((id) => $(id).addEventListener('change', salvaPlano));
+    ['pl-prazo', 'pl-margem', 'pl-folga', 'pl-teto'].forEach((id) => $(id).addEventListener('change', salvaPlano));
     $('pl-lead').addEventListener('change', salvaPlano);
     $('acoes-xlsx').addEventListener('click', () => {
       if (typeof XLSX === 'undefined') { toast('O gerador de planilhas não carregou. Recarregue a página.', true); return; }
       const wb = XLSX.utils.book_new();
       const sh = (nome, cab, linhas) => { const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]); ws['!cols'] = cab.map((_, i) => ({ wch: i === 1 ? 58 : 16 })); XLSX.utils.book_append_sheet(wb, ws, nome); };
       sh('Precisa abrir OS', ['Código', 'Descrição', 'Cliente', 'Disponível', 'Entrega pendente', 'Média mensal', 'Dias c/ entrega', 'Ruptura', 'Prazo (dias)', 'Sugestão de OS (cx)'], A.abrir.map((r) => [r.cod, r.nome, r.cli, r.disp, r.ent, r.media, r.cobEnt, r.rupt, r.lead, r.sug]));
+      sh('Abrir a próxima O.S', ['Código', 'Descrição', 'Cliente', 'O.S atual', 'Última movimentação', 'Disponível', 'O.S aberta (cx)', 'Dias após O.S', 'Abrir em (dias)', 'Sugestão (cx)'], A.proxima.map((r) => [r.cod, r.nome, r.cli, r.os, r.etapa, r.disp, r.osCx, Math.round(r.cobOS), Math.max(0, r.proxDias), r.sugProx]));
       sh('OS atrasadas', ['Código', 'Descrição', 'Cliente', 'OS', 'Previsão', 'Atraso (dias)', 'Última movimentação', 'Disponível', 'Dias c/ entrega'], A.atrasadas.map((r) => [r.cod, r.nome, r.cli, r.os, r.prev, r.atraso, r.etapa, r.disp, r.cobEnt]));
       sh('OS sem previsão', ['Código', 'Descrição', 'Cliente', 'OS', 'Última movimentação', 'Dias c/ entrega', 'Prazo (dias)'], A.semPrev.map((r) => [r.cod, r.nome, r.cli, r.os, r.etapa, r.cobEnt, r.lead]));
+      sh('Acima do teto', ['Código', 'Descrição', 'Cliente', 'OS', 'Disponível', 'O.S aberta (cx)', 'Média mensal', 'Dias após O.S'], A.excesso.map((r) => [r.cod, r.nome, r.cli, r.os, r.disp, r.osCx, r.media, Math.round(r.cobOS)]));
       const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       const d = new Date();
       baixar(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'Acoes de hoje ' + String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear() + arqBusca() + '.xlsx');

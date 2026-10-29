@@ -9,6 +9,9 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 - **O.S em aberto**: uma linha por O.S com os produtos ligados, O.S por setor, situação (no prazo, sem previsão, atrasada) e entregas previstas por semana.
 
 - **Ações de hoje** (aba que abre primeiro): três listas do que precisa ser feito. *Precisa abrir OS*: itens sem OS que, contando a entrega pendente, acabam antes do prazo de produção mais a margem de segurança, com a quantidade sugerida em caixas (consumo do período menos disponível e entrega pendente). *OS atrasadas*: OS com a previsão vencida. *OS sem previsão*: itens com OS aberta, sem data, que acabam antes do prazo. O prazo (padrão 60 dias) e a margem (padrão 15 dias) ficam na própria tela; dá para usar o LeadTime da planilha item por item. Baixa as listas em Excel.
+  - *Abrir a próxima O.S*: para materiais com O.S em andamento, data limite para abrir a próxima = (disponível + o que falta chegar da O.S) ÷ (consumo com folga de 10%) − prazo de produção − margem. Aparece 7 dias antes; a sugestão cobre prazo + margem sem passar do teto de cobertura (120 dias). Selo "reta final" quando é a única O.S e já está em corte e vinco ou depois.
+  - *Estoque acima do teto*: O.S que deixam o material com mais dias de cobertura do que o teto.
+  - Na tabela, a coluna "Próxima O.S" mostra a data limite ou "Abrir agora".
 
 - Mostra cada produto em uma linha, como na planilha de monitoramento: descrição, média mensal, quantidade por caixa, estoque, empenhado, disponível, dias, ruptura, OS, última movimentação, previsão e observação.
 - Calcula o disponível (estoque − empenhado), os dias de estoque (disponível ÷ média mensal × 30), os dias contando a entrega pendente e a data de ruptura a partir da data da importação.
