@@ -4,7 +4,7 @@ Site de controle diário de estoque do PCP da ProFood Embalagens, com os produto
 
 ## O que o site faz
 
-- **Visual "Cockpit"**: tema escuro grafite com um destaque verde-limão para ação e seleção, cores de situação só onde há algo a decidir; fontes Geist e Geist Mono. Seletor de páginas deslizante no topo (Visão geral, Ações de hoje, Produtos JIT, Genéricos, O.S em aberto); título da página com busca e botões de importar/relatórios; barra de filtros (situação, O.S, franquia em lista suspensa) valendo para tabelas, gráficos e relatórios; gráficos em Chart.js 4.4.1.
+- **Visual "Aurora"**: escuro com luzes de aurora se movendo ao fundo e painéis de vidro; destaque em gradiente índigo-violeta; fontes Sora e JetBrains Mono. Menu lateral flutuante com ícones e destaque deslizante; título com busca; barra de filtros (situação, O.S, franquia em lista suspensa). Animações: transição entre páginas com blocos em sequência, números dos KPIs contando, barras e gráficos crescendo, botões e cards reagindo ao toque; tudo desligado com "reduzir movimento". Gráficos em Chart.js 4.4.1.
 - **Visão geral**: KPIs do dia, rupturas previstas nas próximas 8 semanas, itens por situação, situação por franquia, disponível × consumo, % em dia por franquia, franquias mais críticas e os itens mais urgentes.
 - **O.S em aberto**: uma linha por O.S com os produtos ligados, O.S por setor, situação (no prazo, sem previsão, atrasada) e entregas previstas por semana.
 
